@@ -1,6 +1,58 @@
+# Fork
+
+dwl version: 0.7
+config at: config.def.h
+statusbar: [bar-0.7] + slstatus, start dwl with `exec slstatus -s | exec dwl`
+
+Patches applyed:
+- [autostart-0.7] - autostart programs
+- [bar-0.7] - status bar
+- [barcolors] - colored text support for the status bar
+- [gaps] - window gaps
+- [less-simple-touch-input] - touchscreen support
+- [lockedkeys] - define binds when lockscreen is active
+- [swallow] - window swallow support
+
+Other changes I made:
+- Enable xwayland support (config.mk)
+- fix [#709] (Makefile)
+
+Autostart (see config.def.h), note that some of [my scripts] are used
+- dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlroots
+- sh -c pidof /usr/lib/hyprpolkitagent || hyprpolkitagent
+- wl-paste --type image --watch cliphist store
+- wl-paste --type text --watch cliphist store
+- sh -c pidof hypridle || hypridle
+- sh -c pgrep lowbat || lowbat
+- syncthing serve --no-browser
+- kdeconnect-indicator
+- rnd_wall_shell_wbg
+- dunst
+
+Export these variables before starting dwl or stuff will break:
+- QT_QPA_PLATFORM=wayland
+- XDG_BACKEND=wayland
+- XDG_CURRENT_DESKTOP=wlroots
+- XDG_SESSION_DESKTOP=wlroots
+
+Basic binds:
+- Super+Return: foot
+- Super+Shift+T: exit dwl
+- figure the other stuff out yourself (see config.def.h).
+
+[my scripts]: https://github.com/vmkxyz/dotfiles/tree/master/.local/bin/
+[#709]: https://codeberg.org/dwl/dwl/issues/709/
+[autostart-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/autostart/
+[bar-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/bar/
+[barcolors]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/barcolors/
+[gaps]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/gaps/
+[less-simple-touch-input]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/less-simple-touch-input/
+[lockedkeys]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/lockedkeys/
+[swallow]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/swallow/
+
 # dwl - dwm for Wayland
 
-Join us on our IRC channel: [#dwl on Libera Chat]  
+Join us on our IRC channel: [#dwl on Libera Chat]
 Or on our [Discord server].
 
 dwl is a compact, hackable compositor for [Wayland] based on [wlroots]. It is
@@ -29,7 +81,7 @@ are welcome to use `main`, it is a rocky road. Using `main` requires that the
 user be willing to chase git commits of wlroots. Testing development pull
 requests may involve merging unmerged pull requests in [wlroots]' git repository
 and/or git commits of wayland.
-  
+
 ### Building dwl
 dwl has the following dependencies:
 - libinput
