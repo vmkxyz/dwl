@@ -294,6 +294,7 @@ static const Key lockedkeys[] = {
 	{ 0,                                   XKB_KEY_XF86Go,                   spawn,    {.v = mediaprevcmd}  },
 	{ MODKEY,                    XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
 	{ MODKEY,                    XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
+	{ MODKEY|WLR_MODIFIER_ALT,   XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
 	{ MODKEY,                    XKB_KEY_F10,        spawn,          {.v = suspendcmd}  },
 };
 
