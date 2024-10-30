@@ -32,7 +32,7 @@ static int log_level = WLR_ERROR;
 /* Autostart */
 static const char *const autostart[] = {
 	"dbus-update-activation-environment", "--systemd", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP=wlroots", NULL,
-	"sh", "-c", "pidof /usr/lib/hyprpolkitagent || hyprpolkitagent", NULL,
+	"sh", "-c", "pidof /usr/lib/hyprpolkitagent || /usr/lib/hyprpolkitagent", NULL,
 	"wl-paste", "--type", "image", "--watch", "cliphist", "store", NULL,
 	"wl-paste", "--type", "text", "--watch", "cliphist", "store", NULL,
 	"sh", "-c", "pidof hypridle || hypridle", NULL,
