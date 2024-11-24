@@ -1709,7 +1709,7 @@ drawstatus(Monitor *m)
 				if (*itext) /* only draw text if there is something to draw */
 					x = drwl_text(m->drw, x, 0, iw, m->b.height, 0, itext, 0);
 				*(p - 1) = '^';
-				
+
 				argstart = p + 3;
 				argend = strchr(argstart, ')');
 				if (!argend) argend = argstart - 1;
@@ -3899,3 +3899,4 @@ main(int argc, char *argv[])
 usage:
 	die("Usage: %s [-v] [-d] [-s startup command]", argv[0]);
 }
+
