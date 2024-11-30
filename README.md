@@ -26,7 +26,7 @@ Autostart (see config.def.h), note that some of [my scripts] are used
 - sh -c pgrep lowbat || lowbat
 - syncthing serve --no-browser
 - kdeconnect-indicator
-- rnd_wall_shell_wbg
+- wbg_wall ~/Pictures/wallpapers/wallpaper_21.jpg
 - dunst
 
 Export these variables before starting dwl or stuff will break:

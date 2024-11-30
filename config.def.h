@@ -39,7 +39,7 @@ static const char *const autostart[] = {
 	"sh", "-c", "pgrep lowbat || lowbat", NULL,
 	"syncthing", "serve", "--no-browser", NULL,
 	"kdeconnect-indicator", NULL,
-	"rnd_wall_shell_wbg", NULL,
+	"wbg_wall ~/Pictures/wallpapers/wallpaper_21.jpg", NULL,
 	"dunst", NULL,
 	NULL /* terminate */
 };
@@ -136,10 +136,10 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 #define MODKEY WLR_MODIFIER_LOGO
 
 #define TAGKEYS(KEY,SKEY,TAG) \
-	{ MODKEY,                    KEY,            view,            {.ui = 1 << TAG} }, \
-	{ MODKEY|WLR_MODIFIER_CTRL,  KEY,            toggleview,      {.ui = 1 << TAG} }, \
-	{ MODKEY|WLR_MODIFIER_SHIFT, SKEY,           tag,             {.ui = 1 << TAG} }, \
-	{ MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,SKEY,toggletag, {.ui = 1 << TAG} }
+	{ MODKEY,                    -1, KEY,            view,            {.ui = 1 << TAG} }, \
+	{ MODKEY|WLR_MODIFIER_CTRL,  -1, KEY,            toggleview,      {.ui = 1 << TAG} }, \
+	{ MODKEY|WLR_MODIFIER_SHIFT, -1, SKEY,           tag,             {.ui = 1 << TAG} }, \
+	{ MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,-1,SKEY,toggletag, {.ui = 1 << TAG} }
 
 /* helper for spawning shell commands in the pre dwm-5.0 fashion */
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
@@ -170,6 +170,19 @@ static const char *micupaltcmd[]   = { "sh", "-c", "pactl set-source-volume 0 +1
 static const char *micdownaltcmd[] = { "sh", "-c", "pactl set-source-volume 0 -1% && kill -44 $(pidof slstatus)", NULL };
 static const char *micmutecmd[]    = { "sh", "-c", "pactl set-source-mute 0 toggle && kill -44 $(pidof slstatus)", NULL };
 
+static const char *mpdtogglecmd[]  = { "mpc", "toggle",  NULL };
+static const char *mpdnextcmd[]    = { "mpc", "next",    NULL };
+static const char *mpdprevcmd[]    = { "mpc", "prev",    NULL };
+static const char *mpdshufflecmd[] = { "mpc", "shuffle", NULL };
+static const char *mpdrandomcmd[]  = { "mpc", "random",  NULL };
+static const char *mpdvolupcmd[]   = { "sh", "-c", "mpc volume +10 && notify-send -t 300 $(mpc volume)", NULL };
+static const char *mpdvoldowncmd[] = { "sh", "-c", "mpc volume -10 && notify-send -t 300 $(mpc volume)", NULL };
+static const char *mpdloopcmd[]    = { "sh", "-c", "mpc repeat && mpc single", NULL };
+static const char *mpdqueuecmd[]   = { "foot", "mpq", NULL };
+static const char *mpdaddallcmd[]  = { "foot", "mqa", NULL };
+static const char *mpdaddsubcmd[]  = { "foot", "mqp", NULL };
+static const char *mpdadddircmd[]  = { "foot", "mqd", NULL };
+
 static const char *mediaplaycmd[] = { "playerctl", "play-pause", NULL };
 static const char *medianextcmd[] = { "playerctl", "next",       NULL };
 static const char *mediaprevcmd[] = { "playerctl", "previous",   NULL };
@@ -188,36 +201,36 @@ static const char *lockcmd[]     = { "hyprlock", NULL, };
 static const Key keys[] = {
 	/* Note that Shift changes certain key codes: c -> C, 2 -> at, etc. */
 	/* modifier                  key                 function        argument */
-	{ MODKEY,                    XKB_KEY_p,          spawn,          {.v = menucmd} },
-	{ MODKEY|WLR_MODIFIER_ALT,   XKB_KEY_p,          spawn,          {.v = menualtcmd} },
-	{ MODKEY,                    XKB_KEY_Return,     spawn,          {.v = termcmd} },
-	{ MODKEY,                    XKB_KEY_v,          spawn,          {.v = browsercmd} },
-	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_V,          spawn,          {.v = clipbcmd} },
-	{ 0,                         XKB_KEY_Print,      spawn,          {.v = areascrscmd} },
-	{ WLR_MODIFIER_SHIFT,        XKB_KEY_Print,      spawn,          {.v = fullscrscmd} },
-	{ MODKEY,                    XKB_KEY_o,          spawn,          {.v = plistcmd} },
-	{ MODKEY,                    XKB_KEY_n,          spawn,          {.v = bmcmd} },
-	{ MODKEY|WLR_MODIFIER_ALT,   XKB_KEY_Return,     spawn,          {.v = tmuxrrcmd} },
-	{ MODKEY,                    XKB_KEY_b,          togglebar,      {0} },
-	{ MODKEY,                    XKB_KEY_j,          focusstack,     {.i = +1} },
-	{ MODKEY,                    XKB_KEY_k,          focusstack,     {.i = -1} },
-	{ MODKEY,                    XKB_KEY_i,          incnmaster,     {.i = +1} },
-	{ MODKEY,                    XKB_KEY_d,          incnmaster,     {.i = -1} },
-	{ MODKEY,                    XKB_KEY_h,          setmfact,       {.f = -0.05f} },
-	{ MODKEY,                    XKB_KEY_l,          setmfact,       {.f = +0.05f} },
-	{ MODKEY,                    XKB_KEY_Tab,        zoom,           {0} },
-	{ MODKEY,                    XKB_KEY_g,          togglegaps,     {0} },
-	{ MODKEY,                    XKB_KEY_x,          killclient,     {0} },
-	{ MODKEY,                    XKB_KEY_t,          setlayout,      {.v = &layouts[0]} },
-	{ MODKEY,                    XKB_KEY_m,          setlayout,      {.v = &layouts[1]} },
-	{ MODKEY,                    XKB_KEY_space,      togglefloating, {0} },
-	{ MODKEY,                    XKB_KEY_f,          togglefullscreen, {0} },
-	{ MODKEY,                    XKB_KEY_0,          view,           {.ui = ~0} },
-	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_parenright, tag,            {.ui = ~0} },
-	{ MODKEY,                    XKB_KEY_comma,      focusmon,       {.i = WLR_DIRECTION_LEFT} },
-	{ MODKEY,                    XKB_KEY_period,     focusmon,       {.i = WLR_DIRECTION_RIGHT} },
-	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_less,       tagmon,         {.i = WLR_DIRECTION_LEFT} },
-	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_greater,    tagmon,         {.i = WLR_DIRECTION_RIGHT} },
+	{ MODKEY,                    -1, XKB_KEY_p,          spawn,          {.v = menucmd} },
+	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_p,          spawn,          {.v = menualtcmd} },
+	{ MODKEY,                    -1, XKB_KEY_Return,     spawn,          {.v = termcmd} },
+	{ MODKEY,                    -1, XKB_KEY_v,          spawn,          {.v = browsercmd} },
+	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_V,          spawn,          {.v = clipbcmd} },
+	{ 0,                         -1, XKB_KEY_Print,      spawn,          {.v = areascrscmd} },
+	{ WLR_MODIFIER_SHIFT,        -1, XKB_KEY_Print,      spawn,          {.v = fullscrscmd} },
+	{ MODKEY,                    -1, XKB_KEY_o,          spawn,          {.v = plistcmd} },
+	{ MODKEY,                    -1, XKB_KEY_n,          spawn,          {.v = bmcmd} },
+	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_Return,     spawn,          {.v = tmuxrrcmd} },
+	{ MODKEY,                    -1, XKB_KEY_b,          togglebar,      {0} },
+	{ MODKEY,                    -1, XKB_KEY_j,          focusstack,     {.i = +1} },
+	{ MODKEY,                    -1, XKB_KEY_k,          focusstack,     {.i = -1} },
+	{ MODKEY,                    -1, XKB_KEY_i,          incnmaster,     {.i = +1} },
+	{ MODKEY,                    -1, XKB_KEY_d,          incnmaster,     {.i = -1} },
+	{ MODKEY,                    -1, XKB_KEY_h,          setmfact,       {.f = -0.05f} },
+	{ MODKEY,                    -1, XKB_KEY_l,          setmfact,       {.f = +0.05f} },
+	{ MODKEY,                    -1, XKB_KEY_Tab,        zoom,           {0} },
+	{ MODKEY,                    -1, XKB_KEY_g,          togglegaps,     {0} },
+	{ MODKEY,                    -1, XKB_KEY_x,          killclient,     {0} },
+	{ MODKEY,                    -1, XKB_KEY_t,          setlayout,      {.v = &layouts[0]} },
+	{ MODKEY,                    -1, XKB_KEY_m,          setlayout,      {.v = &layouts[1]} },
+	{ MODKEY,                    -1, XKB_KEY_space,      togglefloating, {0} },
+	{ MODKEY,                    -1, XKB_KEY_f,          togglefullscreen, {0} },
+	{ MODKEY,                    -1, XKB_KEY_0,          view,           {.ui = ~0} },
+	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_parenright, tag,            {.ui = ~0} },
+	{ MODKEY,                    -1, XKB_KEY_comma,      focusmon,       {.i = WLR_DIRECTION_LEFT} },
+	{ MODKEY,                    -1, XKB_KEY_period,     focusmon,       {.i = WLR_DIRECTION_RIGHT} },
+	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_less,       tagmon,         {.i = WLR_DIRECTION_LEFT} },
+	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_greater,    tagmon,         {.i = WLR_DIRECTION_RIGHT} },
 	TAGKEYS(          XKB_KEY_1, XKB_KEY_exclam,                     0),
 	TAGKEYS(          XKB_KEY_2, XKB_KEY_at,                         1),
 	TAGKEYS(          XKB_KEY_3, XKB_KEY_numbersign,                 2),
@@ -232,39 +245,51 @@ static const Key keys[] = {
 	TAGKEYS(          XKB_KEY_e, XKB_KEY_E,                          7),
 	TAGKEYS(          XKB_KEY_r, XKB_KEY_R,                          8),
 	TAGKEYS(          XKB_KEY_grave, XKB_KEY_asciitilde,             9),
-	{ 0,                                   XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupcmd}      },
-	{ 0,                                   XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldowncmd}    },
-	{ WLR_MODIFIER_SHIFT,                  XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupaltcmd}   },
-	{ WLR_MODIFIER_SHIFT,                  XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldownaltcmd} },
-	{ 0,                                   XKB_KEY_XF86AudioMute,            spawn,    {.v = volmutecmd}    },
-	{ WLR_MODIFIER_ALT,                    XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupcmd}      },
-	{ WLR_MODIFIER_ALT,                    XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdowncmd}    },
-	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupaltcmd}   },
-	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdownaltcmd} },
-	{ 0,                                   XKB_KEY_XF86AudioMicMute,         spawn,    {.v = micmutecmd}    },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupcmd}       },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdowncmd}     },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
-	{ 0,                                   XKB_KEY_XF86AudioPlay,            spawn,    {.v = mediaplaycmd}  },
-	{ 0,                                   XKB_KEY_XF86AudioNext,            spawn,    {.v = medianextcmd}  },
-	{ 0,                                   XKB_KEY_XF86AudioPrev,            spawn,    {.v = mediaprevcmd}  },
-	{ 0,                                   XKB_KEY_Cancel,                   spawn,    {.v = mediaplaycmd}  },
-	{ 0,                                   XKB_KEY_XF86Favorites,            spawn,    {.v = medianextcmd}  },
-	{ 0,                                   XKB_KEY_XF86Go,                   spawn,    {.v = mediaprevcmd}  },
-	{ MODKEY,                    XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
-	{ MODKEY,                    XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
-	{ MODKEY|WLR_MODIFIER_ALT,   XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
-	{ MODKEY,                    XKB_KEY_F10,        spawn,          {.v = suspendcmd}  },
-	{ MODKEY,                    XKB_KEY_F9,         spawn,          {.v = lockcmd}     },
-	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_T,           quit,          {0} },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_space,      spawn,          {.v = mpdtogglecmd}  },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_n,          spawn,          {.v = mpdnextcmd}    },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_p,          spawn,          {.v = mpdprevcmd}    },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_s,          spawn,          {.v = mpdshufflecmd} },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_r,          spawn,          {.v = mpdrandomcmd}  },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_equal,      spawn,          {.v = mpdvolupcmd}   },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_minus,      spawn,          {.v = mpdvoldowncmd} },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_l,          spawn,          {.v = mpdloopcmd}    },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_q,          spawn,          {.v = mpdqueuecmd}   },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_g,          spawn,          {.v = mpdaddallcmd}  },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_a,          spawn,          {.v = mpdaddsubcmd}  },
+	{ MODKEY,                    XKB_KEY_s, XKB_KEY_d,          spawn,          {.v = mpdadddircmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupcmd}      },
+	{ 0,                                   -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldowncmd}    },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupaltcmd}   },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldownaltcmd} },
+	{ 0,                                   -1, XKB_KEY_XF86AudioMute,            spawn,    {.v = volmutecmd}    },
+	{ WLR_MODIFIER_ALT,                    -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupcmd}      },
+	{ WLR_MODIFIER_ALT,                    -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdowncmd}    },
+	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupaltcmd}   },
+	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdownaltcmd} },
+	{ 0,                                   -1, XKB_KEY_XF86AudioMicMute,         spawn,    {.v = micmutecmd}    },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupcmd}       },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdowncmd}     },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioPlay,            spawn,    {.v = mediaplaycmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioNext,            spawn,    {.v = medianextcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioPrev,            spawn,    {.v = mediaprevcmd}  },
+	{ 0,                                   -1, XKB_KEY_Cancel,                   spawn,    {.v = mediaplaycmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86Favorites,            spawn,    {.v = medianextcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86Go,                   spawn,    {.v = mediaprevcmd}  },
+	{ MODKEY,                    -1, XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
+	{ MODKEY,                    -1, XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
+	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
+	{ MODKEY,                    -1, XKB_KEY_F10,        spawn,          {.v = suspendcmd}  },
+	{ MODKEY,                    -1, XKB_KEY_F9,         spawn,          {.v = lockcmd}     },
+	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_T,           quit,          {0} },
 
 	/* Ctrl-Alt-Backspace and Ctrl-Alt-Fx used to be handled by X server */
-	{ WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_Terminate_Server, quit, {0} },
+	{ WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,-1,XKB_KEY_Terminate_Server, quit, {0} },
 	/* Ctrl-Alt-Fx is used to switch to another VT, if you don't know what a VT is
 	 * do not remove them.
 	 */
-#define CHVT(n) { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_XF86Switch_VT_##n, chvt, {.ui = (n)} }
+#define CHVT(n) { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,-1,XKB_KEY_XF86Switch_VT_##n, chvt, {.ui = (n)} }
 	CHVT(1), CHVT(2), CHVT(3), CHVT(4), CHVT(5), CHVT(6),
 	CHVT(7), CHVT(8), CHVT(9), CHVT(10), CHVT(11), CHVT(12),
 };
@@ -272,30 +297,30 @@ static const Key keys[] = {
 static const Key lockedkeys[] = {
 	/* Note that Shift changes certain key codes: c -> C, 2 -> at, etc. */
 	/* modifier                  key                 function        argument */
-	{ 0,                                   XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupcmd}      },
-	{ 0,                                   XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldowncmd}    },
-	{ WLR_MODIFIER_SHIFT,                  XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupaltcmd}   },
-	{ WLR_MODIFIER_SHIFT,                  XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldownaltcmd} },
-	{ 0,                                   XKB_KEY_XF86AudioMute,            spawn,    {.v = volmutecmd}    },
-	{ WLR_MODIFIER_ALT,                    XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupcmd}      },
-	{ WLR_MODIFIER_ALT,                    XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdowncmd}    },
-	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupaltcmd}   },
-	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdownaltcmd} },
-	{ 0,                                   XKB_KEY_XF86AudioMicMute,         spawn,    {.v = micmutecmd}    },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupcmd}       },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdowncmd}     },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
-	{ 0,                                   XKB_KEY_XF86AudioPlay,            spawn,    {.v = mediaplaycmd}  },
-	{ 0,                                   XKB_KEY_XF86AudioNext,            spawn,    {.v = medianextcmd}  },
-	{ 0,                                   XKB_KEY_XF86AudioPrev,            spawn,    {.v = mediaprevcmd}  },
-	{ 0,                                   XKB_KEY_Cancel,                   spawn,    {.v = mediaplaycmd}  },
-	{ 0,                                   XKB_KEY_XF86Favorites,            spawn,    {.v = medianextcmd}  },
-	{ 0,                                   XKB_KEY_XF86Go,                   spawn,    {.v = mediaprevcmd}  },
-	{ MODKEY,                    XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
-	{ MODKEY,                    XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
-	{ MODKEY|WLR_MODIFIER_ALT,   XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
-	{ MODKEY,                    XKB_KEY_F10,        spawn,          {.v = suspendcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupcmd}      },
+	{ 0,                                   -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldowncmd}    },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = volupaltcmd}   },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = voldownaltcmd} },
+	{ 0,                                   -1, XKB_KEY_XF86AudioMute,            spawn,    {.v = volmutecmd}    },
+	{ WLR_MODIFIER_ALT,                    -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupcmd}      },
+	{ WLR_MODIFIER_ALT,                    -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdowncmd}    },
+	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, -1, XKB_KEY_XF86AudioRaiseVolume,     spawn,    {.v = micupaltcmd}   },
+	{ WLR_MODIFIER_ALT|WLR_MODIFIER_SHIFT, -1, XKB_KEY_XF86AudioLowerVolume,     spawn,    {.v = micdownaltcmd} },
+	{ 0,                                   -1, XKB_KEY_XF86AudioMicMute,         spawn,    {.v = micmutecmd}    },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupcmd}       },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdowncmd}     },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
+	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioPlay,            spawn,    {.v = mediaplaycmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioNext,            spawn,    {.v = medianextcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86AudioPrev,            spawn,    {.v = mediaprevcmd}  },
+	{ 0,                                   -1, XKB_KEY_Cancel,                   spawn,    {.v = mediaplaycmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86Favorites,            spawn,    {.v = medianextcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86Go,                   spawn,    {.v = mediaprevcmd}  },
+	{ MODKEY,                    -1, XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
+	{ MODKEY,                    -1, XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
+	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
+	{ MODKEY,                    -1, XKB_KEY_F10,        spawn,          {.v = suspendcmd}  },
 };
 
 static const Button buttons[] = {
