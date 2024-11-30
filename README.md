@@ -1,8 +1,8 @@
 # Fork
 
-dwl version: 0.7
-config at: config.def.h
-statusbar: [bar-0.7] + slstatus, start dwl with `exec slstatus -s | exec dwl`
+dwl version: 0.7  
+config at: config.def.h  
+statusbar: [bar-0.7] + slstatus, start dwl with `exec slstatus -s | exec dwl`  
 
 Patches applyed:
 - [autostart-0.7] - autostart programs
