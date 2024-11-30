@@ -156,6 +156,7 @@ struct Client {
 
 typedef struct {
 	uint32_t mod;
+	int chain;
 	xkb_keysym_t keysym;
 	void (*func)(const Arg *);
 	const Arg arg;
@@ -407,6 +408,7 @@ static void urgent(struct wl_listener *listener, void *data);
 static void view(const Arg *arg);
 static void virtualkeyboard(struct wl_listener *listener, void *data);
 static void virtualpointer(struct wl_listener *listener, void *data);
+static void warpcursor(const Client *c);
 static Monitor *xytomon(double x, double y);
 static void xytonode(double x, double y, struct wlr_surface **psurface,
 		Client **pc, LayerSurface **pl, double *nx, double *ny);
@@ -421,6 +423,7 @@ static const char broken[] = "broken";
 static pid_t child_pid = -1;
 static int locked;
 static void *exclusive_focus;
+static int chainkey = -1;
 static struct wl_display *dpy;
 static struct wl_event_loop *event_loop;
 static struct wlr_backend *backend;
@@ -611,6 +614,7 @@ arrange(Monitor *m)
 		m->lt[m->sellt]->arrange(m);
 	motionnotify(0, NULL, 0, 0, 0, 0);
 	checkidleinhibitor(NULL);
+	warpcursor(focustop(selmon));
 }
 
 void
@@ -1757,6 +1761,10 @@ focusclient(Client *c, int lift)
 	if (locked)
 		return;
 
+	/* Warp cursor to center of client if it is outside */
+	if (lift)
+		warpcursor(c);
+
 	/* Raise client in stacking order if requested */
 	if (c && lift)
 		wlr_scene_node_raise_to_top(&c->scene->node);
@@ -2049,11 +2057,30 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	const Key *k;
 	for (k = keys; k < END(keys); k++) {
 		if (CLEANMASK(mods) == CLEANMASK(k->mod)
-				&& sym == k->keysym && k->func) {
+				&& sym == k->keysym
+				&& chainkey == -1
+				&& k->chain == -1
+				&& k->func) {
 			k->func(&k->arg);
 			return 1;
 		}
+		else if (sym == k->keysym
+				&& chainkey != -1
+				&& k->chain == chainkey
+				&& k->func) {
+			k->func(&k->arg);
+			chainkey = -1;
+			return 1;
+		}
+		else if (CLEANMASK(mods) == CLEANMASK(k->mod)
+				&& k->chain == (int)sym
+				&& chainkey == -1
+				&& k->func) {
+			chainkey = sym;
+			return 1;
+		}
 	}
+	chainkey = -1;
 	return 0;
 }
 
@@ -3663,6 +3690,27 @@ virtualpointer(struct wl_listener *listener, void *data)
 	wlr_cursor_attach_input_device(cursor, device);
 	if (event->suggested_output)
 		wlr_cursor_map_input_to_output(cursor, device, event->suggested_output);
+}
+
+void
+warpcursor(const Client *c) {
+	if (cursor_mode != CurNormal) {
+		return;
+	}
+	if (!c && selmon) {
+		wlr_cursor_warp_closest(cursor,
+			  NULL,
+			  selmon->w.x + selmon->w.width / 2.0 ,
+			  selmon->w.y + selmon->w.height / 2.0);
+	}
+	else if ( c && (cursor->x < c->geom.x ||
+		cursor->x > c->geom.x + c->geom.width ||
+		cursor->y < c->geom.y ||
+		cursor->y > c->geom.y + c->geom.height))
+		wlr_cursor_warp_closest(cursor,
+			  NULL,
+			  c->geom.x + c->geom.width / 2.0,
+			  c->geom.y + c->geom.height / 2.0);
 }
 
 Monitor *
