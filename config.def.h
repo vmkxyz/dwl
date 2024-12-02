@@ -39,7 +39,7 @@ static const char *const autostart[] = {
 	"sh", "-c", "pgrep lowbat || lowbat", NULL,
 	"syncthing", "serve", "--no-browser", NULL,
 	"kdeconnect-indicator", NULL,
-	"wbg_wall", "~/Pictures/wallpapers/wallpaper_21.jpg", NULL,
+	"sh", "-c", "wbg_wall ~/Pictures/wallpapers/wallpaper_21.jpg", NULL,
 	"dunst", NULL,
 	NULL /* terminate */
 };
