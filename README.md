@@ -13,7 +13,7 @@ Patches applyed:
 - [lockedkeys] - define binds when lockscreen is active
 - [swallow] - window swallow support
 
-- [bar-systray] - systray for the bar patch
+- [bar-systray] - systray for the bar patch  
     for this one, you need the package `gtk4-layer-shell` to be installed
     and you need to to build `statusnotifier-systray-gtk4` as a static library
     follow [this guide] to do so
