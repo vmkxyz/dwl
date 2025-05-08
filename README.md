@@ -13,11 +13,6 @@ Patches applyed:
 - [lockedkeys] - define binds when lockscreen is active
 - [swallow] - window swallow support
 
-- [bar-systray] - systray for the bar patch  
-    for this one, you need the package `gtk4-layer-shell` to be installed  
-    and you need to to build `statusnotifier-systray-gtk4` as a static library  
-    follow [this guide] to do so  
-
 Other changes I made:
 - Enable xwayland support (config.mk)
 - fix [#709] (Makefile)
@@ -47,8 +42,6 @@ Basic binds:
 
 [my scripts]: https://github.com/vmkxyz/dotfiles/tree/master/.local/bin/
 [#709]: https://codeberg.org/dwl/dwl/issues/709/
-[bar-systray]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/bar-systray
-[this guide]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/bar-systray#applying-the-patch
 [autostart-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/autostart/
 [bar-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/bar/
 [barcolors]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/barcolors/
