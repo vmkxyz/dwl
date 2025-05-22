@@ -31,13 +31,11 @@ static int log_level = WLR_ERROR;
 
 /* Autostart */
 static const char *const autostart[] = {
-	"dbus-update-activation-environment", "--systemd", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP=wlroots", NULL,
-	"sh", "-c", "pidof /usr/lib/hyprpolkitagent || /usr/lib/hyprpolkitagent", NULL,
+	"dbus-update-activation-environment", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP=wlroots", NULL,
 	"wl-paste", "--type", "image", "--watch", "cliphist", "store", NULL,
 	"wl-paste", "--type", "text", "--watch", "cliphist", "store", NULL,
-	"sh", "-c", "pidof hypridle || hypridle", NULL,
+	"sh", "-c", "pidof swayidle || swayidle before-sleep swaylock", NULL,
 	"sh", "-c", "pgrep lowbat || lowbat", NULL,
-	"syncthing", "serve", "--no-browser", NULL,
 	"kdeconnect-indicator", NULL,
 	"sh", "-c", "wbg_wall ~/Pictures/wallpapers/wallpaper_21.jpg", NULL,
 	"dunst", NULL,
@@ -192,11 +190,11 @@ static const char *brdowncmd[]     = { "brightnessctl", "set", "10%-", NULL };
 static const char *brupaltcmd[]    = { "brightnessctl", "set", "1%+",  NULL };
 static const char *brdownaltcmd[]  = { "brightnessctl", "set", "1%-",  NULL };
 
-static const char *shutdowncmd[] = { "systemctl", "poweroff",    NULL };
-static const char *rebootcmd[]   = { "systemctl", "reboot",      NULL };
-static const char *srebootcmd[]  = { "systemctl", "soft-reboot", NULL };
-static const char *suspendcmd[]  = { "systemctl", "suspend",     NULL };
-static const char *lockcmd[]     = { "hyprlock", NULL, };
+static const char *shutdowncmd[] = { "loginctl", "poweroff",    NULL };
+static const char *rebootcmd[]   = { "loginctl", "reboot",      NULL };
+static const char *srebootcmd[]  = { "loginctl", "soft-reboot", NULL };
+static const char *suspendcmd[]  = { "loginctl", "suspend",     NULL };
+static const char *lockcmd[]     = { "swaylock", NULL, };
 
 static const Key keys[] = {
 	/* Note that Shift changes certain key codes: c -> C, 2 -> at, etc. */
