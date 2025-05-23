@@ -40,7 +40,7 @@ Basic binds:
 - Super+Shift+T: exit dwl
 - figure the other stuff out yourself (see config.def.h).
 
-[my scripts]: https://github.com/vmkxyz/dotfiles/tree/master/.local/bin/
+[my scripts]: https://https://codeberg.org/vmkxyz/dotfiles/src/branch/master/.local/bin
 [#709]: https://codeberg.org/dwl/dwl/issues/709/
 [autostart-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/autostart/
 [bar-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/bar/
