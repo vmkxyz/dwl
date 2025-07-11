@@ -4,6 +4,7 @@
                         ((hex >> 8) & 0xFF) / 255.0f, \
                         (hex & 0xFF) / 255.0f }
 /* appearance */
+static const int tabletmaptosurface        = 0;  /* map tablet input to surface(1) or monitor(0) */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
 static const int smartgaps                 = 1;  /* 1 means no outer gap when there is only one window */
@@ -37,7 +38,7 @@ static const char *const autostart[] = {
 	"sh", "-c", "pidof swayidle || swayidle before-sleep swaylock", NULL,
 	"sh", "-c", "pgrep lowbat || lowbat", NULL,
 	"kdeconnect-indicator", NULL,
-	"sh", "-c", "wbg_wall ~/Pictures/wallpapers/wallpaper_21.jpg", NULL,
+	"sh", "-c", "wp ~/Pictures/wallpapers/wallpaper_21.jpg", NULL,
 	"dunst", NULL,
 	NULL /* terminate */
 };
@@ -149,7 +150,7 @@ static const char *menualtcmd[] = { "wmenu-run", NULL };
 static const char *browsercmd[] = { "firefox", NULL };
 static const char *clipbcmd[]   = { "sh", "-c", "cliphist list | rofi -dmenu | cliphist decode | wl-copy", NULL };
 
-static const char *plistcmd[]     = { "plist", NULL };
+static const char *wallpapercmd[] = { "foot", "wp", "-i", NULL };
 static const char *bmcmd[]        = { "bm", NULL };
 static const char *tmuxrrcmd[]    = { "foot", "sh", "-c", "tmux attach -t rr || tmux new -s rr", NULL };
 
@@ -206,7 +207,7 @@ static const Key keys[] = {
 	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_V,          spawn,          {.v = clipbcmd} },
 	{ 0,                         -1, XKB_KEY_Print,      spawn,          {.v = areascrscmd} },
 	{ WLR_MODIFIER_SHIFT,        -1, XKB_KEY_Print,      spawn,          {.v = fullscrscmd} },
-	{ MODKEY,                    -1, XKB_KEY_o,          spawn,          {.v = plistcmd} },
+	{ MODKEY,                    -1, XKB_KEY_o,          spawn,          {.v = wallpapercmd} },
 	{ MODKEY,                    -1, XKB_KEY_n,          spawn,          {.v = bmcmd} },
 	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_Return,     spawn,          {.v = tmuxrrcmd} },
 	{ MODKEY,                    -1, XKB_KEY_b,          togglebar,      {0} },
