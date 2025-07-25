@@ -194,7 +194,7 @@ static const char *brdownaltcmd[]  = { "brightnessctl", "set", "1%-",  NULL };
 static const char *shutdowncmd[] = { "loginctl", "poweroff",    NULL };
 static const char *rebootcmd[]   = { "loginctl", "reboot",      NULL };
 static const char *srebootcmd[]  = { "loginctl", "soft-reboot", NULL };
-static const char *suspendcmd[]  = { "loginctl", "suspend",     NULL };
+static const char *suspendcmd[]  = { "suspend",  NULL }; // this is a c binary wrapper for "loginctl suspend" because just running that is broken
 static const char *lockcmd[]     = { "swaylock", NULL, };
 
 static const Key keys[] = {
