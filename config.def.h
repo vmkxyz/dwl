@@ -12,7 +12,7 @@ static int gaps                            = 0;  /* 1 means gaps between windows
 static const unsigned int gappx            = 4;  /* gap pixel between windows */
 static const unsigned int borderpx         = 1;  /* border pixel of windows */
 static const int showbar                   = 1;  /* 0 means no bar */
-static const int topbar                    = 0;  /* 0 means bottom bar */
+static const int topbar                    = 1;  /* 0 means bottom bar */
 static const char *fonts[]                 = {"Saucecodepronf:size=9"};
 static const float rootcolor[]             = COLOR(0x000000ff);
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
