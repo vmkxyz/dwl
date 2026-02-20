@@ -2,7 +2,7 @@
 
 dwl version: 0.7  
 config at: config.def.h  
-statusbar: [bar-0.7] + slstatus, start dwl with `exec slstatus -s | dbus-run-session dwl`  
+statusbar: [bar-0.7] + slstatus, start dwl with `exec slstatus -s | dbus-run-session dwl`
 
 Patches applyed:
 - [autostart-0.7] - autostart programs
@@ -14,21 +14,13 @@ Patches applyed:
 - [lockedkeys] - lockscreen keybinds
 - [swallow] - window swallow support
 - [tablet-input-o.7] - drawing tablet support
-- [warpcursor] - warps cursor to focused top-level
+- [togglekblayoutandoptions] - switch between keyboard layouts
 
 Other changes I made:
 - Enable xwayland support (config.mk)
 - fix [#709] (Makefile)
+- notify-send the current layout name when switching with togglekblayoutandoptions 
 
-Autostart (see config.def.h), note that some of [my scripts] are used
-- dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlroots
-- wl-paste --type image --watch cliphist store
-- wl-paste --type text --watch cliphist store
-- sh -c pidof swayidle || swayidle before-sleep swaylock
-- sh -c pgrep lowbat || lowbat
-- kdeconnect-indicator
-- sh -c wp ~/Pictures/wallpapers/wallpaper_21.jpg
-- dunst
 
 Export these variables before starting dwl or stuff will break:
 - QT_QPA_PLATFORM=wayland
@@ -36,15 +28,17 @@ Export these variables before starting dwl or stuff will break:
 - XDG_BACKEND=wayland
 - XDG_SESSION_DESKTOP=wlroots
 - XDG_SESSION_TYPE=wayland
-And start run dwl with `dbus-run-session`
-Or just use the start-dwl script in [my scripts] repo.
+And start dwl through `dbus-run-session`
+I'd rcommend just using the start-dwl script in [my scripts] repo.
+Note that some stuff is gonna autostart upon launching dwl, check autostart[] in config.def.h
 
 Basic binds:
+- Super+P: rofi
 - Super+Return: foot
 - Super+Shift+T: exit dwl
 - figure the other stuff out yourself (see config.def.h).
 
-[my scripts]: https://codeberg.org/vmkxyz/dotfiles/src/branch/main/.local/bin
+[my scripts]: https://codeberg.org/vmkxyz/dotfiles/src/branch/main/.local/bin/
 [#709]: https://codeberg.org/dwl/dwl/issues/709/
 [autostart-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/autostart/
 [bar-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/bar/
@@ -56,6 +50,7 @@ Basic binds:
 [swallow]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/swallow/
 [tablet-input-o.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/tablet-input
 [warpcursor]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/warpcursor
+[togglekblayoutandoptions]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/togglekblayoutandoptions/
 
 
 # dwl - dwm for Wayland

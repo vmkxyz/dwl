@@ -6,3 +6,4 @@ dwl
 config.h
 *.orig
 *.rej
+*.bak

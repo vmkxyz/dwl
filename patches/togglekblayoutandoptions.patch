@@ -1,0 +1,160 @@
+From 9ee76adc7c6567650e7b34273f953fed03191c05 Mon Sep 17 00:00:00 2001
+From: LaKato <lakato@noreply.codeberg.org>
+Date: Sat, 8 Mar 2025 12:14:41 -0500
+Subject: [PATCH] Update for v0.7
+
+Additional changes:
+- incxkbrules now uses its argument
+- A new setxkbrules function has been added
+- Keyboard groups are no longer looped over because only one is created
+---
+ config.def.h | 17 +++++++++++------
+ dwl.c        | 44 +++++++++++++++++++++++++++++++++-----------
+ 2 files changed, 44 insertions(+), 17 deletions(-)
+
+diff --git a/config.def.h b/config.def.h
+index 22d2171..b3b4699 100644
+--- a/config.def.h
++++ b/config.def.h
+@@ -52,12 +52,15 @@ static const MonitorRule monrules[] = {
+ };
+ 
+ /* keyboard */
+-static const struct xkb_rule_names xkb_rules = {
+-	/* can specify fields: rules, model, layout, variant, options */
+-	/* example:
+-	.options = "ctrl:nocaps",
+-	*/
+-	.options = NULL,
++static const struct xkb_rule_names xkb_rules[] = {
++	{
++		.layout = "us",
++	},
++	/*{
++		.layout = "us",
++		.variant = "dvp",
++		.options = "compose:102,numpad:shift3,kpdl:semi,keypad:atm,caps:super"
++	}*/
+ };
+ 
+ static const int repeat_rate = 25;
+@@ -148,6 +151,8 @@ static const Key keys[] = {
+ 	{ MODKEY,                    XKB_KEY_period,     focusmon,       {.i = WLR_DIRECTION_RIGHT} },
+ 	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_less,       tagmon,         {.i = WLR_DIRECTION_LEFT} },
+ 	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_greater,    tagmon,         {.i = WLR_DIRECTION_RIGHT} },
++	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_A,          incxkbrules,    {.i = +1} },
++	/*{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_E,          setxkbrules,    {.i = +1} },*/
+ 	TAGKEYS(          XKB_KEY_1, XKB_KEY_exclam,                     0),
+ 	TAGKEYS(          XKB_KEY_2, XKB_KEY_at,                         1),
+ 	TAGKEYS(          XKB_KEY_3, XKB_KEY_numbersign,                 2),
+diff --git a/dwl.c b/dwl.c
+index a2711f6..a2413e9 100644
+--- a/dwl.c
++++ b/dwl.c
+@@ -249,6 +249,7 @@ static void arrange(Monitor *m);
+ static void arrangelayer(Monitor *m, struct wl_list *list,
+ 		struct wlr_box *usable_area, int exclusive);
+ static void arrangelayers(Monitor *m);
++static void assignkeymap(struct wlr_keyboard *keyboard);
+ static void axisnotify(struct wl_listener *listener, void *data);
+ static void buttonpress(struct wl_listener *listener, void *data);
+ static void chvt(const Arg *arg);
+@@ -293,6 +294,7 @@ static void fullscreennotify(struct wl_listener *listener, void *data);
+ static void gpureset(struct wl_listener *listener, void *data);
+ static void handlesig(int signo);
+ static void incnmaster(const Arg *arg);
++static void incxkbrules(const Arg *arg);
+ static void inputdevice(struct wl_listener *listener, void *data);
+ static int keybinding(uint32_t mods, xkb_keysym_t sym);
+ static void keypress(struct wl_listener *listener, void *data);
+@@ -333,6 +335,7 @@ static void setmon(Client *c, Monitor *m, uint32_t newtags);
+ static void setpsel(struct wl_listener *listener, void *data);
+ static void setsel(struct wl_listener *listener, void *data);
+ static void setup(void);
++static void setxkbrules(const Arg *arg);
+ static void spawn(const Arg *arg);
+ static void startdrag(struct wl_listener *listener, void *data);
+ static void tag(const Arg *arg);
+@@ -404,6 +407,7 @@ static struct wl_listener lock_listener = {.notify = locksession};
+ 
+ static struct wlr_seat *seat;
+ static KeyboardGroup *kb_group;
++static unsigned int kblayout = 0;
+ static unsigned int cursor_mode;
+ static Client *grabc;
+ static int grabcx, grabcy; /* client-relative */
+@@ -580,6 +584,20 @@ arrangelayers(Monitor *m)
+ 	}
+ }
+ 
++void
++assignkeymap(struct wlr_keyboard *keyboard) {
++	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
++	struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &xkb_rules[kblayout],
++					XKB_KEYMAP_COMPILE_NO_FLAGS);
++
++	if (!keymap)
++		die("failed to compile keymap");
++
++	wlr_keyboard_set_keymap(keyboard, keymap);
++	xkb_keymap_unref(keymap);
++	xkb_context_unref(context);
++}
++
+ void
+ axisnotify(struct wl_listener *listener, void *data)
+ {
+@@ -885,21 +903,11 @@ KeyboardGroup *
+ createkeyboardgroup(void)
+ {
+ 	KeyboardGroup *group = ecalloc(1, sizeof(*group));
+-	struct xkb_context *context;
+-	struct xkb_keymap *keymap;
+ 
+ 	group->wlr_group = wlr_keyboard_group_create();
+ 	group->wlr_group->data = group;
+ 
+-	/* Prepare an XKB keymap and assign it to the keyboard group. */
+-	context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+-	if (!(keymap = xkb_keymap_new_from_names(context, &xkb_rules,
+-				XKB_KEYMAP_COMPILE_NO_FLAGS)))
+-		die("failed to compile keymap");
+-
+-	wlr_keyboard_set_keymap(&group->wlr_group->keyboard, keymap);
+-	xkb_keymap_unref(keymap);
+-	xkb_context_unref(context);
++	assignkeymap(&group->wlr_group->keyboard);
+ 
+ 	wlr_keyboard_set_repeat_info(&group->wlr_group->keyboard, repeat_rate, repeat_delay);
+ 
+@@ -1524,6 +1532,13 @@ incnmaster(const Arg *arg)
+ 	arrange(selmon);
+ }
+ 
++void
++incxkbrules(const Arg *arg)
++{
++	kblayout = (kblayout + arg->i) % LENGTH(xkb_rules);
++	assignkeymap(&kb_group->wlr_group->keyboard);
++}
++
+ void
+ inputdevice(struct wl_listener *listener, void *data)
+ {
+@@ -2645,6 +2660,13 @@ setup(void)
+ #endif
+ }
+ 
++void
++setxkbrules(const Arg *arg)
++{
++	kblayout = arg->i;
++	assignkeymap(&kb_group->wlr_group->keyboard);
++}
++
+ void
+ spawn(const Arg *arg)
+ {
+-- 
+2.48.1
+

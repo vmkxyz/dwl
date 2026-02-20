@@ -40,6 +40,7 @@ static const char *const autostart[] = {
 	"kdeconnect-indicator", NULL,
 	"sh", "-c", "wp ~/Pictures/wallpapers/wallpaper_21.jpg", NULL,
 	"dunst", NULL,
+	"sh", "-c", "fcitx5 -d", NULL,
 	NULL /* terminate */
 };
 
@@ -51,6 +52,8 @@ static const Rule rules[] = {
 	{ "Gimp_EXAMPLE",     NULL,       0,            1,          0,      0,         -1 }, /* Start on currently visible tags floating, not tiled */
 	{ "firefox_EXAMPLE",  NULL,       1 << 8,       0,          0,      0,         -1 }, /* Start on ONLY tag "9" */
 	{ "foot",             NULL,       0,            0,          1,      1,         -1 }, /* make foot swallow clients that are not foot */
+	{ "obs",              NULL,       0,            0,          0,      1,         -1 }, /* obs noswallow */
+	{ "wev",              NULL,       0,            0,          0,      1,         -1 }, /* wev noswallow */
 };
 
 /* layout(s) */
@@ -76,13 +79,36 @@ static const MonitorRule monrules[] = {
 };
 
 /* keyboard */
-static const struct xkb_rule_names xkb_rules = {
+static const struct xkb_rule_names xkb_rules[] = {
 	/* can specify fields: rules, model, layout, variant, options */
 	/* example:
-	.options = "ctrl:nocaps",
+		.layout = "us",
+		.variant = "dvp",
+		.options = "compose:102,numpad:shift3,kpdl:semi,keypad:atm,caps:super"
 	*/
-	.layout = "vmk",
-	.options = NULL,
+	{
+		.layout = "vmk",
+		.options = NULL,
+	},
+	{
+		.layout = "cz",
+		.options = NULL,
+	},
+	{
+		.layout = "us",
+		.variant = "dvorak",
+		.options = NULL,
+	},
+	{
+		.layout = "us",
+		.variant = "colemak",
+		.options = NULL,
+	},
+	{
+		.layout = "us",
+		.variant = "workman",
+		.options = NULL,
+	}
 };
 
 static const int repeat_rate = 50;
@@ -138,21 +164,23 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 	{ MODKEY,                    -1, KEY,            view,            {.ui = 1 << TAG} }, \
 	{ MODKEY|WLR_MODIFIER_CTRL,  -1, KEY,            toggleview,      {.ui = 1 << TAG} }, \
 	{ MODKEY|WLR_MODIFIER_SHIFT, -1, SKEY,           tag,             {.ui = 1 << TAG} }, \
-	{ MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,-1,SKEY,toggletag, {.ui = 1 << TAG} }
+	{ MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,-1,SKEY,toggletag,  {.ui = 1 << TAG} }
 
 /* helper for spawning shell commands in the pre dwm-5.0 fashion */
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 
 /* commands */
-static const char *termcmd[]    = { "foot", NULL };
-static const char *menucmd[]    = { "rofi", "-show", "drun", NULL };
-static const char *menualtcmd[] = { "wmenu-run", NULL };
-static const char *browsercmd[] = { "firefox", NULL };
-static const char *clipbcmd[]   = { "sh", "-c", "cliphist list | rofi -dmenu | cliphist decode | wl-copy", NULL };
+static const char *termcmd[]     = { "foot", NULL };
+static const char *menucmd[]     = { "rofi", "-show", "drun", NULL };
+static const char *menualtcmd[]  = { "rofi", "-show", "run", NULL };
+static const char *browsercmd[]  = { "firefox", NULL };
+static const char *clipbcmd[]    = { "sh", "-c", "cliphist list | rofi -dmenu | cliphist decode | wl-copy", NULL };
+static const char *roficalccmd[] = { "sh", "-c", "rofi -show calc -modi calc -no-show-match -no-sort", NULL };
 
 static const char *wallpapercmd[] = { "foot", "wp", "-i", NULL };
-static const char *bmcmd[]        = { "bm", NULL };
+static const char *bmcmd[]        = { "bmn", NULL };
 static const char *tmuxrrcmd[]    = { "foot", "sh", "-c", "tmux attach -t rr || tmux new -s rr", NULL };
+static const char *stkillswitch[] = { "sh", "-c", "kill -9 $(pidof syncthing) && notify-send 'SYNCTHING KILLED'", NULL};
 
 static const char *areascrscmd[] = { "sh", "-c", "filename=$HOME/Pictures/grim/$(date +%F_%T).png && slurp | grim -g - $filename && wl-copy -t image/png < $filename", NULL };
 static const char *fullscrscmd[] = { "sh", "-c", "filename=$HOME/Pictures/grim/$(date +%F_%T).png && grim $filename && wl-copy -t image/png < $filename", NULL };
@@ -206,11 +234,13 @@ static const Key keys[] = {
 	{ MODKEY,                    -1, XKB_KEY_Return,     spawn,          {.v = termcmd} },
 	{ MODKEY,                    -1, XKB_KEY_v,          spawn,          {.v = browsercmd} },
 	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_V,          spawn,          {.v = clipbcmd} },
+	{ MODKEY,                    -1, XKB_KEY_equal,      spawn,          {.v = roficalccmd} },
 	{ 0,                         -1, XKB_KEY_Print,      spawn,          {.v = areascrscmd} },
 	{ WLR_MODIFIER_SHIFT,        -1, XKB_KEY_Print,      spawn,          {.v = fullscrscmd} },
 	{ MODKEY,                    -1, XKB_KEY_o,          spawn,          {.v = wallpapercmd} },
 	{ MODKEY,                    -1, XKB_KEY_n,          spawn,          {.v = bmcmd} },
 	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_Return,     spawn,          {.v = tmuxrrcmd} },
+	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_k,          spawn,          {.v = stkillswitch} },
 	{ MODKEY,                    -1, XKB_KEY_b,          togglebar,      {0} },
 	{ MODKEY,                    -1, XKB_KEY_j,          focusstack,     {.i = +1} },
 	{ MODKEY,                    -1, XKB_KEY_k,          focusstack,     {.i = -1} },
@@ -231,6 +261,8 @@ static const Key keys[] = {
 	{ MODKEY,                    -1, XKB_KEY_period,     focusmon,       {.i = WLR_DIRECTION_RIGHT} },
 	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_less,       tagmon,         {.i = WLR_DIRECTION_LEFT} },
 	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_greater,    tagmon,         {.i = WLR_DIRECTION_RIGHT} },
+	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_space,      incxkbrules,    {.i = +1} },
+	/*{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_E,          setxkbrules,    {.i = +1} },*/
 	TAGKEYS(          XKB_KEY_1, XKB_KEY_exclam,                     0),
 	TAGKEYS(          XKB_KEY_2, XKB_KEY_at,                         1),
 	TAGKEYS(          XKB_KEY_3, XKB_KEY_numbersign,                 2),
@@ -272,14 +304,14 @@ static const Key keys[] = {
 	{ 0,                                   -1, XKB_KEY_XF86AudioMicMute,         spawn,    {.v = micmutecmd}    },
 	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupcmd}       },
 	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdowncmd}     },
-	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
-	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioPlay,            spawn,    {.v = mediaplaycmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioNext,            spawn,    {.v = medianextcmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioPrev,            spawn,    {.v = mediaprevcmd}  },
-	{ 0,                                   -1, XKB_KEY_Cancel,                   spawn,    {.v = mediaplaycmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86HangupPhone,              spawn,    {.v = mediaplaycmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86Favorites,            spawn,    {.v = medianextcmd}  },
-	{ 0,                                   -1, XKB_KEY_XF86Go,                   spawn,    {.v = mediaprevcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86PickupPhone,          spawn,    {.v = mediaprevcmd}  },
 	{ MODKEY,                    -1, XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
 	{ MODKEY,                    -1, XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
 	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
@@ -312,14 +344,14 @@ static const Key lockedkeys[] = {
 	{ 0,                                   -1, XKB_KEY_XF86AudioMicMute,         spawn,    {.v = micmutecmd}    },
 	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupcmd}       },
 	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdowncmd}     },
-	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
-	{ 0,                                   -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86MonBrightnessUp,      spawn,    {.v = brupaltcmd}    },
+	{ WLR_MODIFIER_SHIFT,                  -1, XKB_KEY_XF86MonBrightnessDown,    spawn,    {.v = brdownaltcmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioPlay,            spawn,    {.v = mediaplaycmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioNext,            spawn,    {.v = medianextcmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioPrev,            spawn,    {.v = mediaprevcmd}  },
-	{ 0,                                   -1, XKB_KEY_Cancel,                   spawn,    {.v = mediaplaycmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86HangupPhone,              spawn,    {.v = mediaplaycmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86Favorites,            spawn,    {.v = medianextcmd}  },
-	{ 0,                                   -1, XKB_KEY_XF86Go,                   spawn,    {.v = mediaprevcmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86PickupPhone,          spawn,    {.v = mediaprevcmd}  },
 	{ MODKEY,                    -1, XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
 	{ MODKEY,                    -1, XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
 	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
