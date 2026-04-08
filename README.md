@@ -9,12 +9,12 @@ Patches applyed:
 - [bar-0.7] - status bar
 - [barcolors] - colored text support in the status bar
 - [chainkeys] - chained keybinds
-- [gaps] - window gaps
 - [less-simple-touch-input] - touchscreen support
 - [lockedkeys] - lockscreen keybinds
 - [swallow] - window swallow support
-- [tablet-input-o.7] - drawing tablet support
+- [tablet-input-0.7] - drawing tablet support
 - [togglekblayoutandoptions] - switch between keyboard layouts
+- [xwayland-handle-minimize] - handle unfocusing some wine games
 
 Other changes I made:
 - Enable xwayland support (config.mk)
@@ -44,13 +44,13 @@ Basic binds:
 [bar-0.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/bar/
 [barcolors]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/barcolors/
 [chainkeys]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/chainkeys
-[gaps]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/gaps/
 [less-simple-touch-input]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/less-simple-touch-input/
 [lockedkeys]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/lockedkeys/
 [swallow]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/swallow/
 [tablet-input-o.7]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/tablet-input
 [warpcursor]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/warpcursor
 [togglekblayoutandoptions]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/togglekblayoutandoptions/
+[xwayland-handle-minimize]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/xwayland-handle-minimize
 
 
 # dwl - dwm for Wayland

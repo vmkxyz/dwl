@@ -7,9 +7,6 @@
 static const int tabletmaptosurface        = 0;  /* map tablet input to surface(1) or monitor(0) */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
-static const int smartgaps                 = 1;  /* 1 means no outer gap when there is only one window */
-static int gaps                            = 0;  /* 1 means gaps between windows are added */
-static const unsigned int gappx            = 4;  /* gap pixel between windows */
 static const unsigned int borderpx         = 1;  /* border pixel of windows */
 static const int showbar                   = 1;  /* 0 means no bar */
 static const int topbar                    = 1;  /* 0 means bottom bar */
@@ -20,7 +17,7 @@ static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You ca
 static uint32_t colors[][3]                = {
 	/*               fg          bg          border    */
 	[SchemeNorm] = { 0xcdd6f4ff, 0x11111bff, 0x1e1e2eff },
-	[SchemeSel]  = { 0xcdd6f4ff, 0x1e1e2eff, 0xf5c2e7ff },
+	[SchemeSel]  = { 0xcdd6f4ff, 0x1e1e2eff, 0xfca4c6ff },
 	[SchemeUrg]  = { 0,          0,          0x1e1e2eff },
 };
 
@@ -179,6 +176,7 @@ static const char *roficalccmd[] = { "sh", "-c", "rofi -show calc -modi calc -no
 
 static const char *wallpapercmd[] = { "foot", "wp", "-i", NULL };
 static const char *bmcmd[]        = { "bmn", NULL };
+static const char *sbcmd[]        = { "sb-cli", NULL };
 static const char *tmuxrrcmd[]    = { "foot", "sh", "-c", "tmux attach -t rr || tmux new -s rr", NULL };
 static const char *stkillswitch[] = { "sh", "-c", "kill -9 $(pidof syncthing) && notify-send 'SYNCTHING KILLED'", NULL};
 
@@ -222,7 +220,7 @@ static const char *brdownaltcmd[]  = { "brightnessctl", "set", "1%-",  NULL };
 
 static const char *shutdowncmd[] = { "loginctl", "poweroff",    NULL };
 static const char *rebootcmd[]   = { "loginctl", "reboot",      NULL };
-static const char *srebootcmd[]  = { "loginctl", "soft-reboot", NULL };
+//static const char *srebootcmd[]  = { "loginctl", "soft-reboot", NULL };
 static const char *suspendcmd[]  = { "suspend",  NULL }; // this is a c binary wrapper for "loginctl suspend" because just running that is broken
 static const char *lockcmd[]     = { "swaylock", NULL, };
 
@@ -239,6 +237,7 @@ static const Key keys[] = {
 	{ WLR_MODIFIER_SHIFT,        -1, XKB_KEY_Print,      spawn,          {.v = fullscrscmd} },
 	{ MODKEY,                    -1, XKB_KEY_o,          spawn,          {.v = wallpapercmd} },
 	{ MODKEY,                    -1, XKB_KEY_n,          spawn,          {.v = bmcmd} },
+	{ MODKEY,                    -1, XKB_KEY_a,          spawn,          {.v = sbcmd} },
 	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_Return,     spawn,          {.v = tmuxrrcmd} },
 	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_k,          spawn,          {.v = stkillswitch} },
 	{ MODKEY,                    -1, XKB_KEY_b,          togglebar,      {0} },
@@ -249,10 +248,8 @@ static const Key keys[] = {
 	{ MODKEY,                    -1, XKB_KEY_h,          setmfact,       {.f = -0.05f} },
 	{ MODKEY,                    -1, XKB_KEY_l,          setmfact,       {.f = +0.05f} },
 	{ MODKEY,                    -1, XKB_KEY_Tab,        zoom,           {0} },
-	{ MODKEY,                    -1, XKB_KEY_g,          togglegaps,     {0} },
 	{ MODKEY,                    -1, XKB_KEY_x,          killclient,     {0} },
-	{ MODKEY,                    -1, XKB_KEY_t,          setlayout,      {.v = &layouts[0]} },
-	{ MODKEY,                    -1, XKB_KEY_m,          setlayout,      {.v = &layouts[1]} },
+	{ MODKEY,                    -1, XKB_KEY_m,          setlayout,      {0} },
 	{ MODKEY,                    -1, XKB_KEY_space,      togglefloating, {0} },
 	{ MODKEY,                    -1, XKB_KEY_f,          togglefullscreen, {0} },
 	{ MODKEY,                    -1, XKB_KEY_0,          view,           {.ui = ~0} },
@@ -314,7 +311,7 @@ static const Key keys[] = {
 	{ 0,                                   -1, XKB_KEY_XF86PickupPhone,          spawn,    {.v = mediaprevcmd}  },
 	{ MODKEY,                    -1, XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
 	{ MODKEY,                    -1, XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
-	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
+	//{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
 	{ MODKEY,                    -1, XKB_KEY_F10,        spawn,          {.v = suspendcmd}  },
 	{ MODKEY,                    -1, XKB_KEY_F9,         spawn,          {.v = lockcmd}     },
 	{ MODKEY|WLR_MODIFIER_SHIFT, -1, XKB_KEY_T,           quit,          {0} },
@@ -349,20 +346,20 @@ static const Key lockedkeys[] = {
 	{ 0,                                   -1, XKB_KEY_XF86AudioPlay,            spawn,    {.v = mediaplaycmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioNext,            spawn,    {.v = medianextcmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86AudioPrev,            spawn,    {.v = mediaprevcmd}  },
-	{ 0,                                   -1, XKB_KEY_XF86HangupPhone,              spawn,    {.v = mediaplaycmd}  },
+	{ 0,                                   -1, XKB_KEY_XF86HangupPhone,          spawn,    {.v = mediaplaycmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86Favorites,            spawn,    {.v = medianextcmd}  },
 	{ 0,                                   -1, XKB_KEY_XF86PickupPhone,          spawn,    {.v = mediaprevcmd}  },
 	{ MODKEY,                    -1, XKB_KEY_F12,        spawn,          {.v = shutdowncmd} },
 	{ MODKEY,                    -1, XKB_KEY_F11,        spawn,          {.v = rebootcmd}   },
-	{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
+	//{ MODKEY|WLR_MODIFIER_ALT,   -1, XKB_KEY_F11,        spawn,          {.v = srebootcmd}  },
 	{ MODKEY,                    -1, XKB_KEY_F10,        spawn,          {.v = suspendcmd}  },
 };
 
 static const Button buttons[] = {
-	{ ClkLtSymbol, 0,      BTN_LEFT,   setlayout,      {.v = &layouts[0]} },
-	{ ClkLtSymbol, 0,      BTN_RIGHT,  setlayout,      {.v = &layouts[2]} },
-	{ ClkTitle,    0,      BTN_MIDDLE, zoom,           {0} },
-	{ ClkStatus,   0,      BTN_MIDDLE, spawn,          {.v = termcmd} },
+	//{ ClkLtSymbol, 0,      BTN_LEFT,   setlayout,      {.v = &layouts[0]} },
+	//{ ClkLtSymbol, 0,      BTN_RIGHT,  setlayout,      {.v = &layouts[2]} },
+	//{ ClkTitle,    0,      BTN_MIDDLE, zoom,           {0} },
+	//{ ClkStatus,   0,      BTN_MIDDLE, spawn,          {.v = termcmd} },
 	{ ClkClient,   MODKEY, BTN_LEFT,   moveresize,     {.ui = CurMove} },
 	{ ClkClient,   MODKEY, BTN_MIDDLE, togglefloating, {0} },
 	{ ClkClient,   MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize} },

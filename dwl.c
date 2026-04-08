@@ -145,6 +145,7 @@ struct Client {
 #ifdef XWAYLAND
 	struct wl_listener activate;
 	struct wl_listener associate;
+	struct wl_listener minimize;
 	struct wl_listener dissociate;
 	struct wl_listener configure;
 	struct wl_listener set_hints;
@@ -406,7 +407,6 @@ static void tile(Monitor *m);
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
-static void togglegaps(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void touchdown(struct wl_listener *listener, void *data);
@@ -515,6 +515,7 @@ static void configurex11(struct wl_listener *listener, void *data);
 static void createnotifyx11(struct wl_listener *listener, void *data);
 static void dissociatex11(struct wl_listener *listener, void *data);
 static xcb_atom_t getatom(xcb_connection_t *xc, const char *name);
+static void minimizenotify(struct wl_listener *listener, void *data);
 static void sethints(struct wl_listener *listener, void *data);
 static void xwaylandready(struct wl_listener *listener, void *data);
 static struct wlr_xwayland *xwayland;
@@ -1261,8 +1262,6 @@ createmon(struct wl_listener *listener, void *data)
 
 	wlr_output_state_init(&state);
 	/* Initialize monitor state using configured rules */
-	m->gaps = gaps;
-
 	m->tagset[0] = m->tagset[1] = 1;
 	for (r = monrules; r < END(monrules); r++) {
 		if (!r->name || strstr(wlr_output->name, r->name)) {
@@ -1579,6 +1578,7 @@ destroynotify(struct wl_listener *listener, void *data)
 		wl_list_remove(&c->activate.link);
 		wl_list_remove(&c->associate.link);
 		wl_list_remove(&c->configure.link);
+		wl_list_remove(&c->minimize.link);
 		wl_list_remove(&c->dissociate.link);
 		wl_list_remove(&c->set_hints.link);
 	} else
@@ -3463,7 +3463,7 @@ tablettooltip(struct wl_listener *listener, void *data)
 void
 tile(Monitor *m)
 {
-	unsigned int h, r, e = m->gaps, mw, my, ty;
+	unsigned int mw, my, ty;
 	int i, n = 0;
 	Client *c;
 
@@ -3472,30 +3472,23 @@ tile(Monitor *m)
 			n++;
 	if (n == 0)
 		return;
-	if (smartgaps == n)
-		e = 0;
 
 	if (n > m->nmaster)
-		mw = m->nmaster ? (int)roundf((m->w.width + gappx*e) * m->mfact) : 0;
+	mw = m->nmaster ? (int)roundf(m->w.width * m->mfact) : 0;
 	else
 		mw = m->w.width;
-	i = 0;
-	my = ty = gappx*e;
+	i = my = ty = 0;
 	wl_list_for_each(c, &clients, link) {
 		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
 			continue;
 		if (i < m->nmaster) {
-			r = MIN(n, m->nmaster) - i;
-			h = (m->w.height - my - gappx*e - gappx*e * (r - 1)) / r;
-			resize(c, (struct wlr_box){.x = m->w.x + gappx*e, .y = m->w.y + my,
-				.width = mw - 2*gappx*e, .height = h}, 0);
-			my += c->geom.height + gappx*e;
+			resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
+				.height = (m->w.height - my) / (MIN(n, m->nmaster) - i)}, 0);
+			my += c->geom.height;
 		} else {
-			r = n - i;
-			h = (m->w.height - ty - gappx*e - gappx*e * (r - 1)) / r;
 			resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,
-				.width = m->w.width - mw - gappx*e, .height = h}, 0);
-			ty += c->geom.height + gappx*e;
+				.width = m->w.width - mw, .height = (m->w.height - ty) / (n - i)}, 0);
+			ty += c->geom.height;
 		}
 		i++;
 	}
@@ -3524,13 +3517,6 @@ togglefullscreen(const Arg *arg)
 	Client *sel = focustop(selmon);
 	if (sel)
 		setfullscreen(sel, !sel->isfullscreen);
-}
-
-void
-togglegaps(const Arg *arg)
-{
-	selmon->gaps = !selmon->gaps;
-	arrange(selmon);
 }
 
 void
@@ -4078,6 +4064,7 @@ createnotifyx11(struct wl_listener *listener, void *data)
 	LISTEN(&xsurface->events.destroy, &c->destroy, destroynotify);
 	LISTEN(&xsurface->events.dissociate, &c->dissociate, dissociatex11);
 	LISTEN(&xsurface->events.request_activate, &c->activate, activatex11);
+	LISTEN(&xsurface->events.request_minimize, &c->minimize, minimizenotify);
 	LISTEN(&xsurface->events.request_configure, &c->configure, configurex11);
 	LISTEN(&xsurface->events.request_fullscreen, &c->fullscreen, fullscreennotify);
 	LISTEN(&xsurface->events.set_hints, &c->set_hints, sethints);
@@ -4103,6 +4090,21 @@ getatom(xcb_connection_t *xc, const char *name)
 	free(reply);
 
 	return atom;
+}
+
+void
+minimizenotify(struct wl_listener *listener, void *data)
+{
+	Client *c = wl_container_of(listener, c, minimize);
+	struct wlr_xwayland_surface *xsurface = c->surface.xwayland;
+	struct wlr_xwayland_minimize_event *e = data;
+	int focused;
+
+	if (xsurface->surface == NULL || !xsurface->surface->mapped)
+		return;
+
+	focused = seat->keyboard_state.focused_surface == xsurface->surface;
+	wlr_xwayland_surface_set_minimized(xsurface, !focused && e->minimize);
 }
 
 void

@@ -53,7 +53,7 @@ index dc0437e..dc851df 100644
  static void toggleview(const Arg *arg);
  static void unlocksession(struct wl_listener *listener, void *data);
 @@ -949,6 +951,8 @@ createmon(struct wl_listener *listener, void *data)
- 
+
  	wlr_output_state_init(&state);
  	/* Initialize monitor state using configured rules */
 +	m->gaps = gaps;
@@ -69,14 +69,14 @@ index dc0437e..dc851df 100644
 +	unsigned int h, r, e = m->gaps, mw, my, ty;
  	int i, n = 0;
  	Client *c;
- 
+
 @@ -2647,23 +2651,30 @@ tile(Monitor *m)
  			n++;
  	if (n == 0)
  		return;
 +	if (smartgaps == n)
 +		e = 0;
- 
+
  	if (n > m->nmaster)
 -		mw = m->nmaster ? (int)roundf(m->w.width * m->mfact) : 0;
 +		mw = m->nmaster ? (int)roundf((m->w.width + gappx*e) * m->mfact) : 0;
@@ -111,7 +111,7 @@ index dc0437e..dc851df 100644
 @@ -2686,6 +2697,13 @@ togglefullscreen(const Arg *arg)
  		setfullscreen(sel, !sel->isfullscreen);
  }
- 
+
 +void
 +togglegaps(const Arg *arg)
 +{
@@ -122,6 +122,5 @@ index dc0437e..dc851df 100644
  void
  toggletag(const Arg *arg)
  {
--- 
+--
 2.45.2
-
