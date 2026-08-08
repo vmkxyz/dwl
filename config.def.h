@@ -180,8 +180,8 @@ static const char *sbcmd[]        = { "sb-cli", NULL };
 static const char *tmuxrrcmd[]    = { "foot", "sh", "-c", "tmux attach -t rr || tmux new -s rr", NULL };
 static const char *stkillswitch[] = { "sh", "-c", "kill -9 $(pidof syncthing) && notify-send 'SYNCTHING KILLED'", NULL};
 
-static const char *areascrscmd[] = { "sh", "-c", "filename=$HOME/Pictures/grim/$(date +%F_%T).png && slurp | grim -g - $filename && wl-copy -t image/png < $filename", NULL };
-static const char *fullscrscmd[] = { "sh", "-c", "filename=$HOME/Pictures/grim/$(date +%F_%T).png && grim $filename && wl-copy -t image/png < $filename", NULL };
+static const char *areascrscmd[] = { "sh", "-c", "filename=$HOME/Pictures/grim/$(date +%F_%H-%M-%S).png && slurp | grim -g - $filename && wl-copy -t image/png < $filename", NULL };
+static const char *fullscrscmd[] = { "sh", "-c", "filename=$HOME/Pictures/grim/$(date +%F_%H-%M-%S).png && grim $filename && wl-copy -t image/png < $filename", NULL };
 
 static const char *volupcmd[]      = { "sh", "-c", "pactl set-sink-volume 0 +5% && kill -44 $(pidof slstatus)", NULL };
 static const char *voldowncmd[]    = { "sh", "-c", "pactl set-sink-volume 0 -5% && kill -44 $(pidof slstatus)", NULL };
