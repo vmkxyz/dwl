@@ -1,12 +1,56 @@
-# dwl - dwm for Wayland
+# Fork
 
-2025-08-16:  
-dwl IS CURRENTLY UN-MAINTAINED.  
-AT THE PRESENT TIME, I (@fauxmight) DO NOT HAVE  
-THE TIME OR CAPACITY TO KEEP UP WITH [wlroots] CHANGES.  
-IF YOU ARE INTERESTED IN TAKING ON LEAD DEVELOPER RESPONSIBILITIES,  
-SEE ISSUE [#1166](https://codeberg.org/dwl/dwl/issues/1166).
----
+dwl version: 0.8
+config at: config.def.h  
+statusbar: [dwlb] + slstatus, start dwl with `exec dbus-run-session dwl -s dwlb &`
+and start slstatus in dwlb with  `slstatus -s | dwlb -status-stdin all &`
+
+Patches applyed:
+- [autostart-0.8] - autostart programs
+- [chainkeys] - chained keybinds
+- ipc¹ - foreign statusbars support
+- [lockedkeys] - lockscreen keybinds
+- [swallow-0.8] - window swallow support
+- [tablet-input-0.8] - drawing tablet support
+- [togglekblayoutandoptions-0.8] - multiple keyboard layouts support
+- [touch-input-0.8] - touchscreen support
+- [xwayland-handle-minimize] - handle unfocusing some wine games
+
+Other changes I made:
+- Enable xwayland support in config.mk
+- ~~notify-send the current layout name when switching with togglekblayoutandoptions~~ not yet
+
+
+Export these variables before starting dwl or stuff will break:
+- QT_QPA_PLATFORM=wayland
+- XDG_CURRENT_DESKTOP=wlroots
+- XDG_BACKEND=wayland
+- XDG_SESSION_DESKTOP=wlroots
+- XDG_SESSION_TYPE=wayland
+And start dwl with `dbus-run-session`
+Or just using the start-dwl script in [my scripts repo].
+Note that some stuff is gonna autostart upon launching dwl, check autostart[] in config.def.h
+
+Basic binds:
+- Super+P: rofi
+- Super+Return: foot
+- Super+Shift+T: exit dwl
+(see config.def.h for all binds)
+
+¹ Unfortunatly, I could not find in which exact issue I got this version of the patch
+however, it is signed by Frank Honolka and original (now stale) patch can be found [here]
+[here]: https://codeberg.org/dwl/dwl-patches/src/branch/main/stale-patches/ipc
+[my scripts repo]: https://codeberg.org/vmkxyz/dotfiles/src/branch/main/.local/bin/
+[autostart-0.8]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/autostart/
+[chainkeys]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/chainkeys
+[touch-input-0.8]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/touch-input/
+[lockedkeys]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/lockedkeys/
+[swallow]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/swallow/
+[tablet-input-0.8]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/tablet-input
+[togglekblayoutandoptions]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/togglekblayoutandoptions/
+[xwayland-handle-minimize]: https://codeberg.org/dwl/dwl-patches/src/branch/main/patches/xwayland-handle-minimize
+
+# dwl - dwm for Wayland
 
 Join us on our IRC channel: [#dwl on Libera Chat]  
 Or on the community-maintained [Discord server].
