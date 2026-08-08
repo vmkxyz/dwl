@@ -51,6 +51,10 @@
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_touch.h>
+#include <wlr/types/wlr_tablet_pad.h>
+#include <wlr/types/wlr_tablet_tool.h>
+#include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
@@ -68,18 +72,20 @@
 #include <xcb/xcb_icccm.h>
 #endif
 
+#include "dwl-ipc-unstable-v2-protocol.h"
 #include "util.h"
 
 /* macros */
 #define MAX(A, B)               ((A) > (B) ? (A) : (B))
 #define MIN(A, B)               ((A) < (B) ? (A) : (B))
 #define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
-#define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
+#define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]) && !(C)->swallowedby)
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define END(A)                  ((A) + LENGTH(A))
 #define TAGMASK                 ((1u << TAGCOUNT) - 1)
 #define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 #define LISTEN_STATIC(E, H)     do { struct wl_listener *_l = ecalloc(1, sizeof(*_l)); _l->notify = (H); wl_signal_add((E), _l); } while (0)
+#define BORDERPX(C)             (borderpx + ((C)->swallowing ? (int)ceilf(swallowborder * (C)->swallowing->bw) : 0))
 
 /* enums */
 enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
@@ -101,7 +107,8 @@ typedef struct {
 } Button;
 
 typedef struct Monitor Monitor;
-typedef struct {
+typedef struct Client Client;
+struct Client {
 	/* Must keep this field first */
 	unsigned int type; /* XDGShell or X11* */
 
@@ -131,6 +138,7 @@ typedef struct {
 #ifdef XWAYLAND
 	struct wl_listener activate;
 	struct wl_listener associate;
+	struct wl_listener minimize;
 	struct wl_listener dissociate;
 	struct wl_listener configure;
 	struct wl_listener set_hints;
@@ -138,11 +146,22 @@ typedef struct {
 	unsigned int bw;
 	uint32_t tags;
 	int isfloating, isurgent, isfullscreen;
+	int isterm, noswallow;
 	uint32_t resize; /* configure serial of a pending resize */
-} Client;
+	pid_t pid;
+	Client *swallowing;  /* client being hidden */
+	Client *swallowedby;
+};
+
+typedef struct {
+	struct wl_list link;
+	struct wl_resource *resource;
+	Monitor *mon;
+} DwlIpcOutput;
 
 typedef struct {
 	uint32_t mod;
+	int chain;
 	xkb_keysym_t keysym;
 	void (*func)(const Arg *);
 	const Arg arg;
@@ -160,6 +179,12 @@ typedef struct {
 	struct wl_listener key;
 	struct wl_listener destroy;
 } KeyboardGroup;
+
+typedef struct TouchGroup {
+	struct wl_list link;
+	struct wlr_touch *touch;
+	Monitor *m;
+} TouchGroup;
 
 typedef struct {
 	/* Must keep this field first */
@@ -185,6 +210,7 @@ typedef struct {
 
 struct Monitor {
 	struct wl_list link;
+	struct wl_list dwl_ipc_outputs;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
 	struct wlr_scene_rect *fullscreen_bg; /* See createmon() for info */
@@ -227,6 +253,8 @@ typedef struct {
 	const char *title;
 	uint32_t tags;
 	int isfloating;
+	int isterm;
+	int noswallow;
 	int monitor;
 } Rule;
 
@@ -239,6 +267,20 @@ typedef struct {
 	struct wl_listener destroy;
 } SessionLock;
 
+typedef struct {
+    uint32_t button;
+    uint32_t state;
+    void (*func)(const Arg *);
+    const Arg arg;
+} TabletPadButton;
+
+typedef struct {
+    uint32_t button;
+    uint32_t state;
+    void (*func)(const Arg *);
+    const Arg arg;
+} TabletButton;
+
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
@@ -246,6 +288,8 @@ static void arrange(Monitor *m);
 static void arrangelayer(Monitor *m, struct wl_list *list,
 		struct wlr_box *usable_area, int exclusive);
 static void arrangelayers(Monitor *m);
+static void autostartexec(void);
+static void assignkeymap(struct wlr_keyboard *keyboard);
 static void axisnotify(struct wl_listener *listener, void *data);
 static void buttonpress(struct wl_listener *listener, void *data);
 static void chvt(const Arg *arg);
@@ -268,7 +312,10 @@ static void createnotify(struct wl_listener *listener, void *data);
 static void createpointer(struct wlr_pointer *pointer);
 static void createpointerconstraint(struct wl_listener *listener, void *data);
 static void createpopup(struct wl_listener *listener, void *data);
+static void createtouch(struct wlr_touch *touch);
+static void createtablet(struct wlr_input_device *device);
 static void cursorconstrain(struct wlr_pointer_constraint_v1 *constraint);
+static void createtouch(struct wlr_touch *touch);
 static void cursorframe(struct wl_listener *listener, void *data);
 static void cursorwarptohint(void);
 static void destroydecoration(struct wl_listener *listener, void *data);
@@ -281,7 +328,22 @@ static void destroynotify(struct wl_listener *listener, void *data);
 static void destroypointerconstraint(struct wl_listener *listener, void *data);
 static void destroysessionlock(struct wl_listener *listener, void *data);
 static void destroykeyboardgroup(struct wl_listener *listener, void *data);
+static void destroytablet(struct wl_listener *listener, void *data);
+static void destroytabletpad(struct wl_listener *listener, void *data);
+static void destroytabletsurfacenotify(struct wl_listener *listener, void *data);
+static void destroytablettool(struct wl_listener *listener, void *data);
 static Monitor *dirtomon(enum wlr_direction dir);
+static void dwl_ipc_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id);
+static void dwl_ipc_manager_destroy(struct wl_resource *resource);
+static void dwl_ipc_manager_get_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output);
+static void dwl_ipc_manager_release(struct wl_client *client, struct wl_resource *resource);
+static void dwl_ipc_output_destroy(struct wl_resource *resource);
+static void dwl_ipc_output_printstatus(Monitor *monitor);
+static void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output);
+static void dwl_ipc_output_set_client_tags(struct wl_client *client, struct wl_resource *resource, uint32_t and_tags, uint32_t xor_tags);
+static void dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *resource, uint32_t index);
+static void dwl_ipc_output_set_tags(struct wl_client *client, struct wl_resource *resource, uint32_t tagmask, uint32_t toggle_tagset);
+static void dwl_ipc_output_release(struct wl_client *client, struct wl_resource *resource);
 static void focusclient(Client *c, int lift);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
@@ -290,8 +352,10 @@ static void fullscreennotify(struct wl_listener *listener, void *data);
 static void gpureset(struct wl_listener *listener, void *data);
 static void handlesig(int signo);
 static void incnmaster(const Arg *arg);
+static void incxkbrules(const Arg *arg);
 static void inputdevice(struct wl_listener *listener, void *data);
 static int keybinding(uint32_t mods, xkb_keysym_t sym);
+static int lockedkeybinding(uint32_t mods, xkb_keysym_t sym);
 static void keypress(struct wl_listener *listener, void *data);
 static void keypressmod(struct wl_listener *listener, void *data);
 static int keyrepeat(void *data);
@@ -308,6 +372,7 @@ static void moveresize(const Arg *arg);
 static void outputmgrapply(struct wl_listener *listener, void *data);
 static void outputmgrapplyortest(struct wlr_output_configuration_v1 *config, int test);
 static void outputmgrtest(struct wl_listener *listener, void *data);
+static pid_t parentpid(pid_t pid);
 static void pointerfocus(Client *c, struct wlr_surface *surface,
 		double sx, double sy, uint32_t time);
 static void printstatus(void);
@@ -316,6 +381,7 @@ static void quit(const Arg *arg);
 static void rendermon(struct wl_listener *listener, void *data);
 static void requestdecorationmode(struct wl_listener *listener, void *data);
 static void requeststartdrag(struct wl_listener *listener, void *data);
+static void swallow(Client *c, Client *toswallow);
 static void requestmonstate(struct wl_listener *listener, void *data);
 static void resize(Client *c, struct wlr_box geo, int interact);
 static void run(char *startup_cmd);
@@ -329,15 +395,30 @@ static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
+static void setxkbrules(const Arg *arg);
 static void spawn(const Arg *arg);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
+static Client *termforwin(Client *c);
+static void tablettoolmotion(struct wlr_tablet_v2_tablet_tool *tool, bool change_x, bool change_y, double x, double y, double dx, double dy, uint32_t time);
+static void tablettoolproximity(struct wl_listener *listener, void *data);
+static void tabletpadbutton(struct wl_listener *listener, void *data);
+static void tablettoolaxis(struct wl_listener *listener, void *data);
+static void tablettoolbutton(struct wl_listener *listener, void *data);
+static void tablettooltip(struct wl_listener *listener, void *data);
 static void tile(Monitor *m);
+static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
+static void toggleswallow(const Arg *arg);
+static void toggleautoswallow(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
+static void touchdown(struct wl_listener *listener, void *data);
+static void touchup(struct wl_listener *listener, void *data);
+static void touchframe(struct wl_listener *listener, void *data);
+static void touchmotion(struct wl_listener *listener, void *data);
 static void unlocksession(struct wl_listener *listener, void *data);
 static void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
 static void unmapnotify(struct wl_listener *listener, void *data);
@@ -356,6 +437,7 @@ static void zoom(const Arg *arg);
 static pid_t child_pid = -1;
 static int locked;
 static void *exclusive_focus;
+static int chainkey = -1;
 static struct wl_display *dpy;
 static struct wl_event_loop *event_loop;
 static struct wlr_backend *backend;
@@ -390,6 +472,13 @@ static struct wlr_pointer_constraint_v1 *active_constraint;
 static struct wlr_cursor *cursor;
 static struct wlr_xcursor_manager *cursor_mgr;
 
+static struct wlr_tablet_manager_v2 *tablet_mgr;
+static struct wlr_tablet_v2_tablet *tablet = NULL;
+static struct wlr_tablet_v2_tablet_tool *tablet_tool = NULL;
+static struct wlr_tablet_v2_tablet_pad *tablet_pad = NULL;
+static struct wlr_surface *tablet_curr_surface = NULL;
+static struct wl_listener destroy_tablet_surface_listener = {.notify = destroytabletsurfacenotify};
+
 static struct wlr_scene_rect *root_bg;
 static struct wlr_session_lock_manager_v1 *session_lock_mgr;
 static struct wlr_scene_rect *locked_bg;
@@ -397,6 +486,7 @@ static struct wlr_session_lock_v1 *cur_lock;
 
 static struct wlr_seat *seat;
 static KeyboardGroup *kb_group;
+static unsigned int kblayout = 0;
 static unsigned int cursor_mode;
 static Client *grabc;
 static int grabcx, grabcy; /* client-relative */
@@ -405,6 +495,7 @@ static struct wlr_output_layout *output_layout;
 static struct wlr_box sgeom;
 static struct wl_list mons;
 static Monitor *selmon;
+static struct wl_list touches;
 
 /* global event handlers */
 static struct wl_listener cursor_axis = {.notify = axisnotify};
@@ -412,6 +503,14 @@ static struct wl_listener cursor_button = {.notify = buttonpress};
 static struct wl_listener cursor_frame = {.notify = cursorframe};
 static struct wl_listener cursor_motion = {.notify = motionrelative};
 static struct wl_listener cursor_motion_absolute = {.notify = motionabsolute};
+static struct wl_listener tablet_device_destroy = {.notify = destroytablet};
+static struct wl_listener tablet_pad_destroy = {.notify = destroytabletpad};
+static struct wl_listener tablet_pad_button = {.notify = tabletpadbutton};
+static struct wl_listener tablet_tool_axis = {.notify = tablettoolaxis};
+static struct wl_listener tablet_tool_button = {.notify = tablettoolbutton};
+static struct wl_listener tablet_tool_destroy = {.notify = destroytablettool};
+static struct wl_listener tablet_tool_proximity = {.notify = tablettoolproximity};
+static struct wl_listener tablet_tool_tip = {.notify = tablettooltip};
 static struct wl_listener gpu_reset = {.notify = gpureset};
 static struct wl_listener layout_change = {.notify = updatemons};
 static struct wl_listener new_idle_inhibitor = {.notify = createidleinhibitor};
@@ -434,7 +533,14 @@ static struct wl_listener request_set_sel = {.notify = setsel};
 static struct wl_listener request_set_cursor_shape = {.notify = setcursorshape};
 static struct wl_listener request_start_drag = {.notify = requeststartdrag};
 static struct wl_listener start_drag = {.notify = startdrag};
+static struct wl_listener touch_down = {.notify = touchdown};
+static struct wl_listener touch_frame = {.notify = touchframe};
+static struct wl_listener touch_motion = {.notify = touchmotion};
+static struct wl_listener touch_up = {.notify = touchup};
 static struct wl_listener new_session_lock = {.notify = locksession};
+
+static struct zdwl_ipc_manager_v2_interface dwl_manager_implementation = {.release = dwl_ipc_manager_release, .get_output = dwl_ipc_manager_get_output};
+static struct zdwl_ipc_output_v2_interface dwl_output_implementation = {.release = dwl_ipc_output_release, .set_tags = dwl_ipc_output_set_tags, .set_layout = dwl_ipc_output_set_layout, .set_client_tags = dwl_ipc_output_set_client_tags};
 
 #ifdef XWAYLAND
 static void activatex11(struct wl_listener *listener, void *data);
@@ -442,12 +548,16 @@ static void associatex11(struct wl_listener *listener, void *data);
 static void configurex11(struct wl_listener *listener, void *data);
 static void createnotifyx11(struct wl_listener *listener, void *data);
 static void dissociatex11(struct wl_listener *listener, void *data);
+static void minimizenotify(struct wl_listener *listener, void *data);
 static void sethints(struct wl_listener *listener, void *data);
 static void xwaylandready(struct wl_listener *listener, void *data);
 static struct wl_listener new_xwayland_surface = {.notify = createnotifyx11};
 static struct wl_listener xwayland_ready = {.notify = xwaylandready};
 static struct wlr_xwayland *xwayland;
 #endif
+
+static pid_t *autostart_pids;
+static size_t autostart_len;
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
@@ -486,11 +596,15 @@ applyrules(Client *c)
 	appid = client_get_appid(c);
 	title = client_get_title(c);
 
+	c->pid = client_get_pid(c);
+
 	for (r = rules; r < END(rules); r++) {
 		if ((!r->title || strstr(title, r->title))
 				&& (!r->id || strstr(appid, r->id))) {
 			c->isfloating = r->isfloating;
 			newtags |= r->tags;
+			c->isterm = r->isterm;
+			c->noswallow = r->noswallow;
 			i = 0;
 			wl_list_for_each(m, &mons, link) {
 				if (r->monitor == i++)
@@ -500,6 +614,12 @@ applyrules(Client *c)
 	}
 
 	c->isfloating |= client_is_float_type(c);
+	if (enableautoswallow && !c->noswallow && !c->isfloating &&
+			!c->surface.xdg->initial_commit) {
+		Client *p = termforwin(c);
+		if (p)
+			swallow(c, p);
+	}
 	setmon(c, mon, newtags);
 }
 
@@ -604,6 +724,41 @@ arrangelayers(Monitor *m)
 }
 
 void
+assignkeymap(struct wlr_keyboard *keyboard) {
+	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	struct xkb_keymap *keymap = xkb_keymap_new_from_names(context, &xkb_rules[kblayout],
+					XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+	if (!keymap)
+		die("failed to compile keymap");
+
+	wlr_keyboard_set_keymap(keyboard, keymap);
+	xkb_keymap_unref(keymap);
+	xkb_context_unref(context);
+}
+
+void
+autostartexec(void) {
+	const char *const *p;
+	size_t i = 0;
+
+	/* count entries */
+	for (p = autostart; *p; autostart_len++, p++)
+		while (*++p);
+
+	autostart_pids = calloc(autostart_len, sizeof(pid_t));
+	for (p = autostart; *p; i++, p++) {
+		if ((autostart_pids[i] = fork()) == 0) {
+			setsid();
+			execvp(*p, (char *const *)p);
+			die("dwl: execvp %s:", *p);
+		}
+		/* skip arguments */
+		while (*++p);
+	}
+}
+
+void
 axisnotify(struct wl_listener *listener, void *data)
 {
 	/* This event is forwarded by the cursor when a pointer emits an axis event,
@@ -699,12 +854,23 @@ checkidleinhibitor(struct wlr_surface *exclude)
 void
 cleanup(void)
 {
+	size_t i;
+
 	cleanuplisteners();
 #ifdef XWAYLAND
 	wlr_xwayland_destroy(xwayland);
 	xwayland = NULL;
 #endif
 	wl_display_destroy_clients(dpy);
+
+	/* kill child processes */
+	for (i = 0; i < autostart_len; i++) {
+		if (0 < autostart_pids[i]) {
+			kill(autostart_pids[i], SIGTERM);
+			waitpid(autostart_pids[i], NULL, 0);
+		}
+	}
+
 	if (child_pid > 0) {
 		kill(-child_pid, SIGTERM);
 		waitpid(child_pid, NULL, 0);
@@ -729,6 +895,10 @@ cleanupmon(struct wl_listener *listener, void *data)
 	Monitor *m = wl_container_of(listener, m, destroy);
 	LayerSurface *l, *tmp;
 	size_t i;
+
+	DwlIpcOutput *ipc_output, *ipc_output_tmp;
+	wl_list_for_each_safe(ipc_output, ipc_output_tmp, &m->dwl_ipc_outputs, link)
+		wl_resource_destroy(ipc_output->resource);
 
 	/* m->layers[i] are intentionally not unlinked */
 	for (i = 0; i < LENGTH(m->layers); i++) {
@@ -781,6 +951,10 @@ cleanuplisteners(void)
 	wl_list_remove(&request_set_cursor_shape.link);
 	wl_list_remove(&request_start_drag.link);
 	wl_list_remove(&start_drag.link);
+	wl_list_remove(&touch_down.link);
+	wl_list_remove(&touch_frame.link);
+	wl_list_remove(&touch_motion.link);
+	wl_list_remove(&touch_up.link);
 	wl_list_remove(&new_session_lock.link);
 #ifdef XWAYLAND
 	wl_list_remove(&new_xwayland_surface.link);
@@ -951,21 +1125,11 @@ KeyboardGroup *
 createkeyboardgroup(void)
 {
 	KeyboardGroup *group = ecalloc(1, sizeof(*group));
-	struct xkb_context *context;
-	struct xkb_keymap *keymap;
 
 	group->wlr_group = wlr_keyboard_group_create();
 	group->wlr_group->data = group;
 
-	/* Prepare an XKB keymap and assign it to the keyboard group. */
-	context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	if (!(keymap = xkb_keymap_new_from_names(context, &xkb_rules,
-				XKB_KEYMAP_COMPILE_NO_FLAGS)))
-		die("failed to compile keymap");
-
-	wlr_keyboard_set_keymap(&group->wlr_group->keyboard, keymap);
-	xkb_keymap_unref(keymap);
-	xkb_context_unref(context);
+	assignkeymap(&group->wlr_group->keyboard);
 
 	wlr_keyboard_set_repeat_info(&group->wlr_group->keyboard, repeat_rate, repeat_delay);
 
@@ -1051,6 +1215,8 @@ createmon(struct wl_listener *listener, void *data)
 
 	m = wlr_output->data = ecalloc(1, sizeof(*m));
 	m->wlr_output = wlr_output;
+
+	wl_list_init(&m->dwl_ipc_outputs);
 
 	for (i = 0; i < LENGTH(m->layers); i++)
 		wl_list_init(&m->layers[i]);
@@ -1200,6 +1366,37 @@ createpopup(struct wl_listener *listener, void *data)
 }
 
 void
+createtablet(struct wlr_input_device *device)
+{
+	if (!tablet) {
+		struct libinput_device *device_handle = NULL;
+		if (!wlr_input_device_is_libinput(device) ||
+				!(device_handle = wlr_libinput_get_device_handle(device)))
+			return;
+		tablet = wlr_tablet_create(tablet_mgr, seat, device);
+		wl_signal_add(&tablet->wlr_device->events.destroy, &tablet_device_destroy);
+		if (libinput_device_config_send_events_get_modes(device_handle)) {
+			libinput_device_config_send_events_set_mode(device_handle, send_events_mode);
+			wlr_cursor_attach_input_device(cursor, device);
+		}
+	} else if (device == tablet->wlr_device) {
+		wlr_log(WLR_ERROR, "createtablet: duplicate device");
+	} else {
+		wlr_log(WLR_ERROR, "createtablet: already have one tablet");
+	}
+}
+
+void
+createtouch(struct wlr_touch *wlr_touch)
+{
+	TouchGroup *touch = ecalloc(1, sizeof(TouchGroup));
+
+	touch->touch = wlr_touch;
+	wl_list_insert(&touches, &touch->link);
+	wlr_cursor_attach_input_device(cursor, &wlr_touch->base);
+}
+
+void
 cursorconstrain(struct wlr_pointer_constraint_v1 *constraint)
 {
 	if (active_constraint == constraint)
@@ -1337,6 +1534,7 @@ destroynotify(struct wl_listener *listener, void *data)
 		wl_list_remove(&c->activate.link);
 		wl_list_remove(&c->associate.link);
 		wl_list_remove(&c->configure.link);
+		wl_list_remove(&c->minimize.link);
 		wl_list_remove(&c->dissociate.link);
 		wl_list_remove(&c->set_hints.link);
 	} else
@@ -1383,6 +1581,37 @@ destroykeyboardgroup(struct wl_listener *listener, void *data)
 	free(group);
 }
 
+void
+destroytablet(struct wl_listener *listener, void *data)
+{
+	wl_list_remove(&tablet_device_destroy.link);
+	wlr_cursor_detach_input_device(cursor, tablet->wlr_device);
+	tablet = NULL;
+}
+
+void
+destroytabletpad(struct wl_listener *listener, void *data)
+{
+	wl_list_remove(&tablet_pad_button.link);
+	wl_list_remove(&tablet_pad_destroy.link);
+	tablet_pad = NULL;
+}
+
+void
+destroytabletsurfacenotify(struct wl_listener *listener, void *data)
+{
+	if (tablet_curr_surface)
+		wl_list_remove(&destroy_tablet_surface_listener.link);
+	tablet_curr_surface = NULL;
+}
+
+void
+destroytablettool(struct wl_listener *listener, void *data)
+{
+	destroytabletsurfacenotify(NULL, NULL);
+	tablet_tool = NULL;
+}
+
 Monitor *
 dirtomon(enum wlr_direction dir)
 {
@@ -1397,6 +1626,192 @@ dirtomon(enum wlr_direction dir)
 			selmon->wlr_output, selmon->m.x, selmon->m.y)))
 		return next->data;
 	return selmon;
+}
+
+void
+dwl_ipc_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{
+	struct wl_resource *manager_resource = wl_resource_create(client, &zdwl_ipc_manager_v2_interface, version, id);
+	if (!manager_resource) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+	wl_resource_set_implementation(manager_resource, &dwl_manager_implementation, NULL, dwl_ipc_manager_destroy);
+
+	zdwl_ipc_manager_v2_send_tags(manager_resource, TAGCOUNT);
+
+	for (unsigned int i = 0; i < LENGTH(layouts); i++)
+		zdwl_ipc_manager_v2_send_layout(manager_resource, layouts[i].symbol);
+}
+
+void
+dwl_ipc_manager_destroy(struct wl_resource *resource)
+{
+	/* No state to destroy */
+}
+
+void
+dwl_ipc_manager_get_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output)
+{
+	DwlIpcOutput *ipc_output;
+	Monitor *monitor = wlr_output_from_resource(output)->data;
+	struct wl_resource *output_resource = wl_resource_create(client, &zdwl_ipc_output_v2_interface, wl_resource_get_version(resource), id);
+	if (!output_resource)
+		return;
+
+	ipc_output = ecalloc(1, sizeof(*ipc_output));
+	ipc_output->resource = output_resource;
+	ipc_output->mon = monitor;
+	wl_resource_set_implementation(output_resource, &dwl_output_implementation, ipc_output, dwl_ipc_output_destroy);
+	wl_list_insert(&monitor->dwl_ipc_outputs, &ipc_output->link);
+	dwl_ipc_output_printstatus_to(ipc_output);
+}
+
+void
+dwl_ipc_manager_release(struct wl_client *client, struct wl_resource *resource)
+{
+	wl_resource_destroy(resource);
+}
+
+static void
+dwl_ipc_output_destroy(struct wl_resource *resource)
+{
+	DwlIpcOutput *ipc_output = wl_resource_get_user_data(resource);
+	wl_list_remove(&ipc_output->link);
+	free(ipc_output);
+}
+
+void
+dwl_ipc_output_printstatus(Monitor *monitor)
+{
+	DwlIpcOutput *ipc_output;
+	wl_list_for_each(ipc_output, &monitor->dwl_ipc_outputs, link)
+		dwl_ipc_output_printstatus_to(ipc_output);
+}
+
+void
+dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output)
+{
+	Monitor *monitor = ipc_output->mon;
+	Client *c, *focused;
+	int tagmask, state, numclients, focused_client, tag;
+	const char *title, *appid;
+	focused = focustop(monitor);
+	zdwl_ipc_output_v2_send_active(ipc_output->resource, monitor == selmon);
+
+	for (tag = 0 ; tag < TAGCOUNT; tag++) {
+		numclients = state = focused_client = 0;
+		tagmask = 1 << tag;
+		if ((tagmask & monitor->tagset[monitor->seltags]) != 0)
+			state |= ZDWL_IPC_OUTPUT_V2_TAG_STATE_ACTIVE;
+
+		wl_list_for_each(c, &clients, link) {
+			if (c->mon != monitor)
+				continue;
+			if (!(c->tags & tagmask))
+				continue;
+			if (c == focused)
+				focused_client = 1;
+			if (c->isurgent)
+				state |= ZDWL_IPC_OUTPUT_V2_TAG_STATE_URGENT;
+
+			numclients++;
+		}
+		zdwl_ipc_output_v2_send_tag(ipc_output->resource, tag, state, numclients, focused_client);
+	}
+	title = focused ? client_get_title(focused) : "";
+	appid = focused ? client_get_appid(focused) : "";
+
+	zdwl_ipc_output_v2_send_layout(ipc_output->resource, monitor->lt[monitor->sellt] - layouts);
+	zdwl_ipc_output_v2_send_title(ipc_output->resource, title);
+	zdwl_ipc_output_v2_send_appid(ipc_output->resource, appid);
+	zdwl_ipc_output_v2_send_layout_symbol(ipc_output->resource, monitor->ltsymbol);
+	if (wl_resource_get_version(ipc_output->resource) >= ZDWL_IPC_OUTPUT_V2_FULLSCREEN_SINCE_VERSION) {
+		zdwl_ipc_output_v2_send_fullscreen(ipc_output->resource, focused ? focused->isfullscreen : 0);
+	}
+	if (wl_resource_get_version(ipc_output->resource) >= ZDWL_IPC_OUTPUT_V2_FLOATING_SINCE_VERSION) {
+		zdwl_ipc_output_v2_send_floating(ipc_output->resource, focused ? focused->isfloating : 0);
+	}
+	zdwl_ipc_output_v2_send_frame(ipc_output->resource);
+}
+
+void
+dwl_ipc_output_set_client_tags(struct wl_client *client, struct wl_resource *resource, uint32_t and_tags, uint32_t xor_tags)
+{
+	DwlIpcOutput *ipc_output;
+	Monitor *monitor;
+	Client *selected_client;
+	unsigned int newtags = 0;
+
+	ipc_output = wl_resource_get_user_data(resource);
+	if (!ipc_output)
+		return;
+
+	monitor = ipc_output->mon;
+	selected_client = focustop(monitor);
+	if (!selected_client)
+		return;
+
+	newtags = (selected_client->tags & and_tags) ^ xor_tags;
+	if (!newtags)
+		return;
+
+	selected_client->tags = newtags;
+	if (selmon == monitor)
+		focusclient(focustop(monitor), 1);
+	arrange(selmon);
+	printstatus();
+}
+
+void
+dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *resource, uint32_t index)
+{
+	DwlIpcOutput *ipc_output;
+	Monitor *monitor;
+
+	ipc_output = wl_resource_get_user_data(resource);
+	if (!ipc_output)
+		return;
+
+	monitor = ipc_output->mon;
+	if (index >= LENGTH(layouts))
+		return;
+	if (index != monitor->lt[monitor->sellt] - layouts)
+		monitor->sellt ^= 1;
+
+	monitor->lt[monitor->sellt] = &layouts[index];
+	arrange(monitor);
+	printstatus();
+}
+
+void
+dwl_ipc_output_set_tags(struct wl_client *client, struct wl_resource *resource, uint32_t tagmask, uint32_t toggle_tagset)
+{
+	DwlIpcOutput *ipc_output;
+	Monitor *monitor;
+	unsigned int newtags = tagmask & TAGMASK;
+
+	ipc_output = wl_resource_get_user_data(resource);
+	if (!ipc_output)
+		return;
+	monitor = ipc_output->mon;
+
+	if (!newtags || newtags == monitor->tagset[monitor->seltags])
+		return;
+	if (toggle_tagset)
+		monitor->seltags ^= 1;
+
+	monitor->tagset[monitor->seltags] = newtags;
+	if (selmon == monitor)
+		focusclient(focustop(monitor), 1);
+	arrange(monitor);
+	printstatus();
+}
+
+void
+dwl_ipc_output_release(struct wl_client *client, struct wl_resource *resource)
+{
+	wl_resource_destroy(resource);
 }
 
 void
@@ -1560,10 +1975,25 @@ gpureset(struct wl_listener *listener, void *data)
 void
 handlesig(int signo)
 {
-	if (signo == SIGCHLD)
-		while (waitpid(-1, NULL, WNOHANG) > 0);
-	else if (signo == SIGINT || signo == SIGTERM)
+	if (signo == SIGCHLD) {
+		pid_t pid, *p, *lim;
+		while ((pid = waitpid(-1, NULL, WNOHANG)) > 0) {
+			if (pid == child_pid)
+				child_pid = -1;
+			if (!(p = autostart_pids))
+				continue;
+			lim = &p[autostart_len];
+
+			for (; p < lim; p++) {
+				if (*p == pid) {
+					*p = -1;
+					break;
+				}
+			}
+		}
+	} else if (signo == SIGINT || signo == SIGTERM) {
 		quit(NULL);
+	}
 }
 
 void
@@ -1576,11 +2006,19 @@ incnmaster(const Arg *arg)
 }
 
 void
+incxkbrules(const Arg *arg)
+{
+	kblayout = (kblayout + arg->i) % LENGTH(xkb_rules);
+	assignkeymap(&kb_group->wlr_group->keyboard);
+}
+
+void
 inputdevice(struct wl_listener *listener, void *data)
 {
 	/* This event is raised by the backend when a new input device becomes
 	 * available. */
 	struct wlr_input_device *device = data;
+	struct wlr_tablet_pad *pad = NULL;
 	uint32_t caps;
 
 	switch (device->type) {
@@ -1589,6 +2027,18 @@ inputdevice(struct wl_listener *listener, void *data)
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		createpointer(wlr_pointer_from_input_device(device));
+		break;
+        case WLR_INPUT_DEVICE_TABLET:
+		createtablet(device);
+		break;
+	case WLR_INPUT_DEVICE_TABLET_PAD:
+		pad = wlr_tablet_pad_from_input_device(device);
+		tablet_pad = wlr_tablet_pad_create(tablet_mgr, seat, device);
+		wl_signal_add(&pad->events.button,  &tablet_pad_button);
+		wl_signal_add(&device->events.destroy, &tablet_pad_destroy);
+		break;
+	case WLR_INPUT_DEVICE_TOUCH:
+		createtouch(wlr_touch_from_input_device(device));
 		break;
 	default:
 		/* TODO handle other input device types */
@@ -1602,6 +2052,8 @@ inputdevice(struct wl_listener *listener, void *data)
 	caps = WL_SEAT_CAPABILITY_POINTER;
 	if (!wl_list_empty(&kb_group->wlr_group->devices))
 		caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+	if (!wl_list_empty(&touches))
+		caps |= WL_SEAT_CAPABILITY_TOUCH;
 	wlr_seat_set_capabilities(seat, caps);
 }
 
@@ -1616,13 +2068,46 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	const Key *k;
 	for (k = keys; k < END(keys); k++) {
 		if (CLEANMASK(mods) == CLEANMASK(k->mod)
-				&& xkb_keysym_to_lower(sym) == xkb_keysym_to_lower(k->keysym)
+				&& sym == k->keysym
+				&& chainkey == -1
+				&& k->chain == -1
 				&& k->func) {
 			k->func(&k->arg);
 			return 1;
 		}
+		else if (sym == k->keysym
+				&& chainkey != -1
+				&& k->chain == chainkey
+				&& k->func) {
+			k->func(&k->arg);
+			chainkey = -1;
+			return 1;
+		}
+		else if (CLEANMASK(mods) == CLEANMASK(k->mod)
+				&& k->chain == (int)sym
+				&& chainkey == -1
+				&& k->func) {
+			chainkey = sym;
+			return 1;
+		}
 	}
+	chainkey = -1;
 	return 0;
+}
+
+int
+lockedkeybinding(uint32_t mods, xkb_keysym_t sym)
+{
+	int handled = 0;
+	const Key *k;
+	for (k = lockedkeys; k < END(lockedkeys); k++) {
+		if (CLEANMASK(mods) == CLEANMASK(k->mod) &&
+				sym == k->keysym && k->func) {
+			k->func(&k->arg);
+			handled = 1;
+		}
+	}
+	return handled;
 }
 
 void
@@ -1651,6 +2136,10 @@ keypress(struct wl_listener *listener, void *data)
 		for (i = 0; i < nsyms; i++)
 			handled = keybinding(mods, syms[i]) || handled;
 	}
+
+	if (locked && event->state == WL_KEYBOARD_KEY_STATE_PRESSED)
+		for (i = 0; i < nsyms; i++)
+			handled = lockedkeybinding(mods, syms[i]) || handled;
 
 	if (handled && group->wlr_group->keyboard.repeat_info.delay > 0) {
 		group->mods = mods;
@@ -2057,6 +2546,20 @@ outputmgrtest(struct wl_listener *listener, void *data)
 	outputmgrapplyortest(config, 1);
 }
 
+pid_t
+parentpid(pid_t pid)
+{
+	unsigned int v = 0;
+	FILE *f;
+	char buf[256];
+	snprintf(buf, sizeof(buf) - 1, "/proc/%u/stat", (unsigned)pid);
+	if (!(f = fopen(buf, "r")))
+		return 0;
+	fscanf(f, "%*u %*s %*c %u", &v);
+	fclose(f);
+	return (pid_t)v;
+}
+
 void
 pointerfocus(Client *c, struct wlr_surface *surface, double sx, double sy,
 		uint32_t time)
@@ -2089,38 +2592,9 @@ void
 printstatus(void)
 {
 	Monitor *m = NULL;
-	Client *c;
-	uint32_t occ, urg, sel;
 
-	wl_list_for_each(m, &mons, link) {
-		occ = urg = 0;
-		wl_list_for_each(c, &clients, link) {
-			if (c->mon != m)
-				continue;
-			occ |= c->tags;
-			if (c->isurgent)
-				urg |= c->tags;
-		}
-		if ((c = focustop(m))) {
-			printf("%s title %s\n", m->wlr_output->name, client_get_title(c));
-			printf("%s appid %s\n", m->wlr_output->name, client_get_appid(c));
-			printf("%s fullscreen %d\n", m->wlr_output->name, c->isfullscreen);
-			printf("%s floating %d\n", m->wlr_output->name, c->isfloating);
-			sel = c->tags;
-		} else {
-			printf("%s title \n", m->wlr_output->name);
-			printf("%s appid \n", m->wlr_output->name);
-			printf("%s fullscreen \n", m->wlr_output->name);
-			printf("%s floating \n", m->wlr_output->name);
-			sel = 0;
-		}
-
-		printf("%s selmon %u\n", m->wlr_output->name, m == selmon);
-		printf("%s tags %"PRIu32" %"PRIu32" %"PRIu32" %"PRIu32"\n",
-			m->wlr_output->name, occ, m->tagset[m->seltags], sel, urg);
-		printf("%s layout %s\n", m->wlr_output->name, m->ltsymbol);
-	}
-	fflush(stdout);
+	wl_list_for_each(m, &mons, link)
+		dwl_ipc_output_printstatus(m);
 }
 
 void
@@ -2250,6 +2724,7 @@ run(char *startup_cmd)
 		die("startup: backend_start");
 
 	/* Now that the socket exists and the backend is started, run the startup command */
+	autostartexec();
 	if (startup_cmd) {
 		int piperw[2];
 		if (pipe(piperw) < 0)
@@ -2351,7 +2826,7 @@ setfullscreen(Client *c, int fullscreen)
 	c->isfullscreen = fullscreen;
 	if (!c->mon || !client_surface(c)->mapped)
 		return;
-	c->bw = fullscreen ? 0 : borderpx;
+	c->bw = fullscreen ? 0 : BORDERPX(c);
 	client_set_fullscreen(c, fullscreen);
 	wlr_scene_node_reparent(&c->scene->node, layers[c->isfullscreen
 			? LyrFS : c->isfloating ? LyrFloat : LyrTile]);
@@ -2418,6 +2893,9 @@ setmon(Client *c, Monitor *m, uint32_t newtags)
 		setfloating(c, c->isfloating);
 	}
 	focusclient(focustop(selmon), 1);
+
+	if (c->swallowing)
+		setmon(c->swallowing, m, newtags);
 }
 
 void
@@ -2585,6 +3063,8 @@ setup(void)
 
 	relative_pointer_mgr = wlr_relative_pointer_manager_v1_create(dpy);
 
+	tablet_mgr = wlr_tablet_v2_create(dpy);
+
 	/*
 	 * Creates a cursor, which is a wlroots utility for tracking the cursor
 	 * image shown on screen.
@@ -2614,6 +3094,18 @@ setup(void)
 	wl_signal_add(&cursor->events.button, &cursor_button);
 	wl_signal_add(&cursor->events.axis, &cursor_axis);
 	wl_signal_add(&cursor->events.frame, &cursor_frame);
+	wl_signal_add(&cursor->events.tablet_tool_proximity, &tablet_tool_proximity);
+	wl_signal_add(&cursor->events.tablet_tool_axis, &tablet_tool_axis);
+	wl_signal_add(&cursor->events.tablet_tool_button, &tablet_tool_button);
+	wl_signal_add(&cursor->events.tablet_tool_tip, &tablet_tool_tip);
+
+
+	wl_list_init(&touches);
+
+	wl_signal_add(&cursor->events.touch_down, &touch_down);
+	wl_signal_add(&cursor->events.touch_frame, &touch_frame);
+	wl_signal_add(&cursor->events.touch_motion, &touch_motion);
+	wl_signal_add(&cursor->events.touch_up, &touch_up);
 
 	cursor_shape_mgr = wlr_cursor_shape_manager_v1_create(dpy, 1);
 	wl_signal_add(&cursor_shape_mgr->events.request_set_shape, &request_set_cursor_shape);
@@ -2646,6 +3138,8 @@ setup(void)
 	wl_signal_add(&output_mgr->events.apply, &output_mgr_apply);
 	wl_signal_add(&output_mgr->events.test, &output_mgr_test);
 
+	wl_global_create(dpy, &zdwl_ipc_manager_v2_interface, 2, NULL, dwl_ipc_manager_bind);
+
 	/* Make sure XWayland clients don't connect to the parent X server,
 	 * e.g when running in the x11 backend or the wayland backend and the
 	 * compositor has Xwayland support */
@@ -2664,6 +3158,13 @@ setup(void)
 		fprintf(stderr, "failed to setup XWayland X server, continuing without it\n");
 	}
 #endif
+}
+
+void
+setxkbrules(const Arg *arg)
+{
+	kblayout = arg->i;
+	assignkeymap(&kb_group->wlr_group->keyboard);
 }
 
 void
@@ -2689,6 +3190,44 @@ startdrag(struct wl_listener *listener, void *data)
 }
 
 void
+swallow(Client *c, Client *toswallow)
+{
+	/* Do not allow a client to swallow itself */
+	if (c == toswallow)
+		return;
+
+	/* Swallow */
+	if (toswallow && !c->swallowing) {
+		c->swallowing = toswallow;
+		toswallow->swallowedby = c;
+		toswallow->mon = c->mon;
+		toswallow->mon = c->mon;
+		wl_list_remove(&c->link);
+		wl_list_insert(&c->swallowing->link, &c->link);
+		wl_list_remove(&c->flink);
+		wl_list_insert(&c->swallowing->flink, &c->flink);
+		c->bw = BORDERPX(c);
+		c->tags = toswallow->tags;
+		c->isfloating = toswallow->isfloating;
+		c->geom = toswallow->geom;
+		setfullscreen(toswallow, 0);
+	}
+
+	/* Unswallow */
+	else if (c->swallowing) {
+		wl_list_remove(&c->swallowing->link);
+		wl_list_insert(&c->link, &c->swallowing->link);
+		wl_list_remove(&c->swallowing->flink);
+		wl_list_insert(&c->flink, &c->swallowing->flink);
+		c->swallowing->tags = c->tags;
+		c->swallowing->swallowedby = NULL;
+		c->swallowing = NULL;
+		c->bw = BORDERPX(c);
+		setfullscreen(c, 0);
+	}
+}
+
+void
 tag(const Arg *arg)
 {
 	Client *sel = focustop(selmon);
@@ -2707,6 +3246,231 @@ tagmon(const Arg *arg)
 	Client *sel = focustop(selmon);
 	if (sel)
 		setmon(sel, dirtomon(arg->i), 0);
+}
+
+void
+tabletapplymap(double x, double y, struct wlr_input_device *dev)
+{
+	Client *p;
+	struct wlr_box geom = {0};
+	if (tabletmaptosurface && tablet_curr_surface) {
+		toplevel_from_wlr_surface(tablet_curr_surface, &p, NULL);
+		if (p) {
+			for (; client_get_parent(p); p = client_get_parent(p));
+			geom.x = p->geom.x + p->bw;
+			geom.y = p->geom.y + p->bw;
+			geom.width = p->geom.width - 2 * p->bw;
+			geom.height = p->geom.height - 2 * p->bw;
+			wlr_cursor_map_input_to_region(cursor, dev, &geom);
+		}
+	}
+	wlr_cursor_map_input_to_output(cursor, dev, selmon->wlr_output);
+}
+
+void
+tabletpadbutton(struct wl_listener *listener, void *data)
+{
+    struct wlr_tablet_pad_button_event *event = data;
+    const TabletPadButton *pb;
+
+    for (pb = tabletpadbuttons; pb < END(tabletpadbuttons); pb++) {
+        if (event->button == pb->button
+                && event->state == pb->state
+                && pb->func) {
+            pb->func(&pb->arg);
+        }
+    }
+
+    if (tablet_pad)
+        wlr_tablet_v2_tablet_pad_notify_button(tablet_pad,
+            event->button, event->time_msec,
+            (enum zwp_tablet_pad_v2_button_state)event->state);
+}
+
+void
+tablettoolmotion(struct wlr_tablet_v2_tablet_tool *tool, bool change_x, bool change_y,
+		double x, double y, double dx, double dy, uint32_t time)
+{
+	struct wlr_surface *surface = NULL;
+	double sx, sy;
+
+	if (!change_x && !change_y)
+		return;
+
+	tabletapplymap(x, y, tablet->wlr_device);
+
+	x = (MAX(tablet_area[0], MIN(tablet_area[0] + tablet_area[2], x)) - tablet_area[0]) / tablet_area[2];
+	y = (MAX(tablet_area[1], MIN(tablet_area[1] + tablet_area[3], y)) - tablet_area[1]) / tablet_area[3];
+
+
+	// TODO: apply constraints
+	switch (tablet_tool->wlr_tool->type) {
+	case WLR_TABLET_TOOL_TYPE_LENS:
+	case WLR_TABLET_TOOL_TYPE_MOUSE:
+		wlr_cursor_move(cursor, tablet->wlr_device, dx, dy);
+		break;
+	default:
+		wlr_cursor_warp_absolute(cursor, tablet->wlr_device, change_x ? x : NAN, change_y ? y : NAN);
+		break;
+	}
+
+	motionnotify(time, NULL, 0, 0, 0, 0);
+
+	xytonode(cursor->x, cursor->y, &surface, NULL, NULL, &sx, &sy);
+	if (surface && !wlr_surface_accepts_tablet_v2(surface, tablet))
+		surface = NULL;
+
+	if (surface != tablet_curr_surface) {
+		if (tablet_curr_surface) {
+			// TODO: wait until all buttons released before leaving
+			if (tablet_tool)
+				wlr_tablet_v2_tablet_tool_notify_proximity_out(tablet_tool);
+			if (tablet_pad)
+				wlr_tablet_v2_tablet_pad_notify_leave(tablet_pad, tablet_curr_surface);
+			wl_list_remove(&destroy_tablet_surface_listener.link);
+		}
+		if (surface) {
+			if (tablet_pad)
+				wlr_tablet_v2_tablet_pad_notify_enter(tablet_pad, tablet, surface);
+			if (tablet_tool)
+				wlr_tablet_v2_tablet_tool_notify_proximity_in(tablet_tool, tablet, surface);
+			wl_signal_add(&surface->events.destroy, &destroy_tablet_surface_listener);
+		}
+		tablet_curr_surface = surface;
+	}
+
+	if (surface)
+		wlr_tablet_v2_tablet_tool_notify_motion(tablet_tool, sx, sy);
+}
+
+void
+tablettoolproximity(struct wl_listener *listener, void *data)
+{
+	struct wlr_tablet_tool_proximity_event *event = data;
+	struct wlr_tablet_tool *tool = event->tool;
+
+	if (!tablet_tool) {
+		tablet_tool = wlr_tablet_tool_create(tablet_mgr, seat, tool);
+		wl_signal_add(&tablet_tool->wlr_tool->events.destroy, &tablet_tool_destroy);
+		wl_signal_add(&tablet_tool->events.set_cursor, &request_cursor);
+	}
+
+	switch (event->state) {
+	case WLR_TABLET_TOOL_PROXIMITY_OUT:
+		wlr_tablet_v2_tablet_tool_notify_proximity_out(tablet_tool);
+		destroytabletsurfacenotify(NULL, NULL);
+		break;
+	case WLR_TABLET_TOOL_PROXIMITY_IN:
+		tablettoolmotion(tablet_tool, true, true, event->x, event->y, 0, 0, event->time_msec);
+		break;
+	}
+}
+
+double tilt_x = 0;
+double tilt_y = 0;
+
+void
+tablettoolaxis(struct wl_listener *listener, void *data)
+{
+	struct wlr_tablet_tool_axis_event *event = data;
+
+	tablettoolmotion(tablet_tool,
+		event->updated_axes & WLR_TABLET_TOOL_AXIS_X,
+		event->updated_axes & WLR_TABLET_TOOL_AXIS_Y,
+		event->x, event->y, event->dx, event->dy, event->time_msec);
+
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_PRESSURE)
+		wlr_tablet_v2_tablet_tool_notify_pressure(tablet_tool, event->pressure);
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_DISTANCE)
+		wlr_tablet_v2_tablet_tool_notify_distance(tablet_tool, event->distance);
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_TILT_X)
+		tilt_x = event->tilt_x;
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_TILT_Y)
+		tilt_y = event->tilt_y;
+	if (event->updated_axes & (WLR_TABLET_TOOL_AXIS_TILT_X | WLR_TABLET_TOOL_AXIS_TILT_Y))
+		wlr_tablet_v2_tablet_tool_notify_tilt(tablet_tool, tilt_x, tilt_y);
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_ROTATION)
+		wlr_tablet_v2_tablet_tool_notify_rotation(tablet_tool, event->rotation);
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_SLIDER)
+		wlr_tablet_v2_tablet_tool_notify_slider(tablet_tool, event->slider);
+	if (event->updated_axes & WLR_TABLET_TOOL_AXIS_WHEEL)
+		wlr_tablet_v2_tablet_tool_notify_wheel(tablet_tool, event->wheel_delta, 0);
+}
+
+void
+tablettoolbutton(struct wl_listener *listener, void *data)
+{
+    struct wlr_tablet_tool_button_event *event = data;
+    const TabletButton *tb;
+
+    for (tb = tabletbuttons; tb < END(tabletbuttons); tb++) {
+        if (event->button == tb->button
+                && event->state == tb->state
+                && tb->func) {
+            tb->func(&tb->arg);
+        }
+    }
+
+    wlr_tablet_v2_tablet_tool_notify_button(tablet_tool, event->button,
+        (enum zwp_tablet_pad_v2_button_state)event->state);
+}
+
+void
+tablettooltip(struct wl_listener *listener, void *data)
+{
+	struct wlr_tablet_tool_tip_event *event = data;
+
+	if (!tablet_curr_surface) {
+		struct wlr_pointer_button_event fakeptrbtnevent = {
+			.button = BTN_LEFT,
+			.state = event->state == WLR_TABLET_TOOL_TIP_UP ?
+				WL_POINTER_BUTTON_STATE_RELEASED : WL_POINTER_BUTTON_STATE_PRESSED,
+			.time_msec = event->time_msec,
+		};
+		buttonpress(NULL, (void *)&fakeptrbtnevent);
+	}
+
+	if (event->state == WLR_TABLET_TOOL_TIP_UP) {
+		wlr_tablet_v2_tablet_tool_notify_up(tablet_tool);
+		return;
+	}
+
+	wlr_tablet_v2_tablet_tool_notify_down(tablet_tool);
+	wlr_tablet_tool_v2_start_implicit_grab(tablet_tool);
+}
+
+Client *
+termforwin(Client *c)
+{
+	Client *p;
+	pid_t pid;
+	pid_t pids[32];
+	size_t i, pids_len;
+
+	if (!c->pid || c->isterm)
+		return NULL;
+
+	/* Get all parent pids */
+	pids_len = 0;
+	pid = c->pid;
+	while (pids_len < LENGTH(pids)) {
+		pid = parentpid(pid);
+		if (!pid)
+			break;
+		pids[pids_len++] = pid;
+	}
+
+	/* Find closest parent */
+	for (i = 0; i < pids_len; i++) {
+		wl_list_for_each(p, &clients, link) {
+			if (!p->pid || !p->isterm || p->swallowedby)
+				continue;
+			if (pids[i] == p->pid)
+				return p;
+		}
+	}
+
+	return NULL;
 }
 
 void
@@ -2744,6 +3508,13 @@ tile(Monitor *m)
 }
 
 void
+togglebar(const Arg *arg) {
+	DwlIpcOutput *ipc_output;
+	wl_list_for_each(ipc_output, &selmon->dwl_ipc_outputs, link)
+		zdwl_ipc_output_v2_send_toggle_visibility(ipc_output->resource);
+}
+
+void
 togglefloating(const Arg *arg)
 {
 	Client *sel = focustop(selmon);
@@ -2758,6 +3529,32 @@ togglefullscreen(const Arg *arg)
 	Client *sel = focustop(selmon);
 	if (sel)
 		setfullscreen(sel, !sel->isfullscreen);
+}
+
+void
+toggleswallow(const Arg *arg)
+{
+	Client *c, *sel = focustop(selmon);
+	if (!sel)
+		return;
+
+	if (sel->swallowing) {
+		swallow(sel, NULL);
+	} else {
+		wl_list_for_each(c, &sel->flink, flink) {
+			if (&c->flink == &fstack)
+				continue; /* wrap past the sentinel node */
+			if (VISIBLEON(c, selmon))
+				break; /* found it */
+		}
+		swallow(sel, c);
+	}
+}
+
+void
+toggleautoswallow(const Arg *arg)
+{
+	enableautoswallow = !enableautoswallow;
 }
 
 void
@@ -2786,6 +3583,120 @@ toggleview(const Arg *arg)
 	arrange(selmon);
 	printstatus();
 }
+
+void
+touchdown(struct wl_listener *listener, void *data)
+{
+	struct wlr_touch_down_event *event = data;
+	double lx, ly;
+	double sx, sy;
+	struct wlr_surface *surface;
+	Client *c = NULL;
+	uint32_t serial = 0;
+	Monitor *m;
+
+	wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
+
+	// Map the input to the appropriate output, to ensure that rotation is
+	// handled.
+	wl_list_for_each(m, &mons, link) {
+		if (m == NULL || m->wlr_output == NULL) {
+			continue;
+		}
+		if (event->touch->output_name != NULL && 0 != strcmp(event->touch->output_name, m->wlr_output->name)) {
+			continue;
+		}
+
+		wlr_cursor_map_input_to_output(cursor, &event->touch->base, m->wlr_output);
+	}
+
+	wlr_cursor_absolute_to_layout_coords(cursor, &event->touch->base, event->x, event->y, &lx, &ly);
+
+	/* Find the client under the pointer and send the event along. */
+	xytonode(lx, ly, &surface, &c, NULL, &sx, &sy);
+	if (sloppyfocus)
+		focusclient(c, 0);
+
+	if (surface != NULL) {
+		serial = wlr_seat_touch_notify_down(seat, surface, event->time_msec, event->touch_id, sx, sy);
+	}
+
+	if (serial && wlr_seat_touch_num_points(seat) == 1) {
+		/* Emulate a mouse click if the touch event wasn't handled */
+		struct wlr_pointer_button_event *button_event = data;
+		struct wlr_pointer_motion_absolute_event *motion_event = data;
+		double dx, dy;
+
+		wlr_cursor_absolute_to_layout_coords(cursor, &motion_event->pointer->base, motion_event->x, motion_event->y, &lx, &ly);
+		wlr_cursor_warp_closest(cursor, &motion_event->pointer->base, lx, ly);
+		dx = lx - cursor->x;
+		dy = ly - cursor->y;
+		motionnotify(motion_event->time_msec, &motion_event->pointer->base, dx, dy, dx, dy);
+
+		button_event->button = BTN_LEFT;
+		button_event->state = WL_POINTER_BUTTON_STATE_PRESSED;
+		buttonpress(listener, button_event);
+	}
+}
+
+void
+touchup(struct wl_listener *listener, void *data)
+{
+	struct wlr_touch_up_event *event = data;
+
+	if (!wlr_seat_touch_get_point(seat, event->touch_id)) {
+		return;
+	}
+
+	if (wlr_seat_touch_num_points(seat) == 1) {
+		struct wlr_pointer_button_event *button_event = data;
+
+		button_event->button = BTN_LEFT;
+		button_event->state = WL_POINTER_BUTTON_STATE_RELEASED;
+		buttonpress(listener, button_event);
+	}
+
+	wlr_seat_touch_notify_up(seat, event->time_msec, event->touch_id);
+	wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
+}
+
+void
+touchframe(struct wl_listener *listener, void *data)
+{
+	wlr_seat_touch_notify_frame(seat);
+	wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
+}
+
+void
+touchmotion(struct wl_listener *listener, void *data)
+{
+	struct wlr_touch_motion_event *event = data;
+	double lx, ly;
+	double sx, sy;
+	struct wlr_surface *surface;
+	Client *c = NULL;
+
+	if (!wlr_seat_touch_get_point(seat, event->touch_id)) {
+		return;
+	}
+
+	wlr_cursor_absolute_to_layout_coords(cursor, &event->touch->base, event->x, event->y, &lx, &ly);
+	xytonode(lx, ly, &surface, &c, NULL, &sx, &sy);
+
+	if (c != NULL && surface != NULL) {
+		if (sloppyfocus)
+			focusclient(c, 0);
+		wlr_seat_touch_point_focus(seat, surface, event->time_msec, event->touch_id, sx, sy);
+	} else {
+		if (sloppyfocus)
+			focusclient(NULL, 0);
+		wlr_seat_touch_point_clear_focus(seat, event->time_msec, event->touch_id);
+	}
+	wlr_seat_touch_notify_motion(seat, event->time_msec, event->touch_id, sx, sy);
+
+	wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
+}
+
 
 void
 unlocksession(struct wl_listener *listener, void *data)
@@ -2818,6 +3729,12 @@ unmapnotify(struct wl_listener *listener, void *data)
 	if (c == grabc) {
 		cursor_mode = CurNormal;
 		grabc = NULL;
+	}
+
+	if (c->swallowing) {
+		swallow(c, NULL);
+	} else if (c->swallowedby) {
+		swallow(c->swallowedby, NULL);
 	}
 
 	if (client_is_unmanaged(c)) {
@@ -3137,6 +4054,7 @@ createnotifyx11(struct wl_listener *listener, void *data)
 	LISTEN(&xsurface->events.destroy, &c->destroy, destroynotify);
 	LISTEN(&xsurface->events.dissociate, &c->dissociate, dissociatex11);
 	LISTEN(&xsurface->events.request_activate, &c->activate, activatex11);
+	LISTEN(&xsurface->events.request_minimize, &c->minimize, minimizenotify);
 	LISTEN(&xsurface->events.request_configure, &c->configure, configurex11);
 	LISTEN(&xsurface->events.request_fullscreen, &c->fullscreen, fullscreennotify);
 	LISTEN(&xsurface->events.set_hints, &c->set_hints, sethints);
@@ -3149,6 +4067,21 @@ dissociatex11(struct wl_listener *listener, void *data)
 	Client *c = wl_container_of(listener, c, dissociate);
 	wl_list_remove(&c->map.link);
 	wl_list_remove(&c->unmap.link);
+}
+
+void
+minimizenotify(struct wl_listener *listener, void *data)
+{
+	Client *c = wl_container_of(listener, c, minimize);
+	struct wlr_xwayland_surface *xsurface = c->surface.xwayland;
+	struct wlr_xwayland_minimize_event *e = data;
+	int focused;
+
+	if (xsurface->surface == NULL || !xsurface->surface->mapped)
+		return;
+
+	focused = seat->keyboard_state.focused_surface == xsurface->surface;
+	wlr_xwayland_surface_set_minimized(xsurface, !focused && e->minimize);
 }
 
 void
@@ -3213,3 +4146,4 @@ main(int argc, char *argv[])
 usage:
 	die("Usage: %s [-v] [-d] [-s startup command]", argv[0]);
 }
+

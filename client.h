@@ -94,9 +94,12 @@ client_activate_surface(struct wlr_surface *s, int activated)
 {
 	struct wlr_xdg_toplevel *toplevel;
 #ifdef XWAYLAND
-	struct wlr_xwayland_surface *xsurface;
-	if ((xsurface = wlr_xwayland_surface_try_from_wlr_surface(s))) {
-		wlr_xwayland_surface_activate(xsurface, activated);
+	struct wlr_xwayland_surface *surface;
+	if ((surface = wlr_xwayland_surface_try_from_wlr_surface(s))) {
+		if (activated && surface->minimized)
+			wlr_xwayland_surface_set_minimized(surface, false);
+
+		wlr_xwayland_surface_activate(surface, activated);
 		return;
 	}
 #endif
@@ -129,6 +132,18 @@ client_get_appid(Client *c)
 		return c->surface.xwayland->class ? c->surface.xwayland->class : "broken";
 #endif
 	return c->surface.xdg->toplevel->app_id ? c->surface.xdg->toplevel->app_id : "broken";
+}
+
+static inline int
+client_get_pid(Client *c)
+{
+	pid_t pid;
+#ifdef XWAYLAND
+	if (client_is_x11(c))
+		return c->surface.xwayland->pid;
+#endif
+	wl_client_get_credentials(c->surface.xdg->client->client, &pid, NULL, NULL);
+	return pid;
 }
 
 static inline void
